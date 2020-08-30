@@ -1,5 +1,7 @@
 import numpy as np
 import tensorflow as tf
+import tensorflow.python.keras.backend as K
+import os
 
 print_layer = lambda layer: print("  {:<24} inputs = {:>10} {:<20} outputs = {:>10} {:<20}".format(
     layer.name,
@@ -10,6 +12,7 @@ print_layer = lambda layer: print("  {:<24} inputs = {:>10} {:<20} outputs = {:>
 ))
 
 class BaseModel(tf.keras.Model):
+    # pylint: disable=no-member
     def call(self, inputs):
         return self.model(inputs)
 
@@ -193,6 +196,7 @@ class NetD(tf.keras.Model):
 
         self.features = tf.keras.Sequential(layers[:-1])
         self.classifier = tf.keras.Sequential(layers[-1])
+        #self.classifier.add(tf.keras.layers.Reshape((1,))) # -> (batchsize, 1) instead of (batchsize,)
         self.classifier.add(tf.keras.layers.Activation('sigmoid'))
 
     def call(self, x):
@@ -200,6 +204,7 @@ class NetD(tf.keras.Model):
         classifier = self.classifier(features)
         #classifier = classifier.view(-1, 1).squeeze(1) # From pytorch impl
         # TODO: Is the following equivalent? Do we need this? What about batch size?
+        # https://www.tensorflow.org/api_docs/python/tf/keras/layers/Reshape honors batch size
         classifier = tf.reshape(classifier, (-1, 1))
         classifier = tf.squeeze(classifier, 1)
 
@@ -227,7 +232,7 @@ class NetG(tf.keras.Model):
         latent_i = self.encoder_i(x)
         gen_img = self.decoder(latent_i)
         latent_o = self.encoder_o(gen_img)
-        return gen_img, latent_i, latent_o
+        return latent_i, gen_img, latent_o
 
     def summary(self):
         print("encoder_i layers:")
@@ -242,3 +247,119 @@ class NetG(tf.keras.Model):
         for layer in self.encoder_o.layers:
             print_layer(layer)
         self.encoder_o.summary()
+
+
+class GANomaly(tf.keras.Model):
+    def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0, resume=False, resume_path=None):
+        super().__init__()
+        self.netg = NetG(input_shape, latent_size, n_filters, n_extra_layers)
+        self.netd = NetD(input_shape, latent_size, n_filters, n_extra_layers)
+        # apply weights_init
+        # https://github.com/samet-akcay/ganomaly/blob/master/lib/networks.py#L11
+        # https://keras.io/api/layers/initializers/
+        # https://gist.github.com/jkleint/eb6dc49c861a1c21b612b568dd188668
+
+        # resume from stored weights
+        if resume:
+            self.load_weights(resume_path)
+        self.resume_path = resume_path
+
+        # losses
+        self.loss_adv = tf.keras.losses.MeanSquaredError()
+        self.weight_adv = 1 # TODO
+        self.loss_con = tf.keras.losses.MeanAbsoluteError()
+        self.weight_con = 50 # TODO
+        self.loss_enc = tf.keras.losses.MeanSquaredError()
+        self.weight_enc = 1 # TODO
+        self.loss_bce = tf.keras.losses.BinaryCrossentropy()
+
+        # input TODO
+        #self.input = None
+        #self.label = None
+        #self.ground_truth = None
+        #self.fixed_input = None
+        #self.real_label = tf.ones(shape=(batchsize,), dtype=tf.dtypes.float32)
+        #self.fake_label = tf.zeros(shape=(batchsize,), dtype=tf.dtypes.float32)
+
+        # optimizer
+        self.optimizer_d = tf.keras.optimizers.Adam(learning_rate=0.001, beta_1=0.9, beta_2=0.999)
+        self.optimizer_g = tf.keras.optimizers.Adam(learning_rate=0.001, beta_1=0.9, beta_2=0.999)
+
+    def load_weights(self, path):
+        #if os.path.exists(resume_path):
+        print('Loading pre-trained network weights from: "{}"'.format(
+            os.path.abspath(path)), end=' ')
+        self.netg.load_weights(os.path.join(path, 'generator'))
+        self.netd.load_weights(os.path.join(path, 'discriminator'))
+        print("-> Done\n")
+
+    def save_weights(self, path):
+        print('Saving pre-trained network weights to: "{}"'.format(
+            os.path.abspath(path)), end=' ')
+        self.netg.save_weights(os.path.join(path, 'generator'))
+        self.netd.save_weights(os.path.join(path, 'discriminator'))
+        print("-> Done\n")
+
+    def call(self, x):
+        # TODO output of netg ???
+        return self.netg(x)[1]
+
+    #@tf.function(autograph=False) # disable inherited tf.function(autograph=True) decorator
+    def train_step(self, data):
+        if isinstance(data, tuple):
+            data = data[0]
+        with tf.GradientTape() as tape:
+            latent_i, fake, latent_o = self.netg(data)
+
+            err_g_adv = self.loss_adv(self.netd(data)[1], self.netd(fake)[1])
+            err_g_con = self.loss_con(data, fake)
+            err_g_enc = self.loss_enc(latent_i, latent_o)
+            err_g = err_g_adv * self.weight_adv + \
+                    err_g_con * self.weight_con + \
+                    err_g_enc * self.weight_enc
+
+        # we are only traning the trainable_weights and not all trainable_variables (TODO right assumption???)
+        grads_g = tape.gradient(err_g, self.netg.trainable_weights)
+        self.optimizer_g.apply_gradients(zip(grads_g, self.netg.trainable_weights))
+
+        with tf.GradientTape() as tape:
+            pred_real, _ = self.netd(data)
+            pred_fake, _ = self.netd(fake)
+
+            err_d_real = self.loss_bce(tf.ones_like(pred_real), pred_real)
+            err_d_fake = self.loss_bce(tf.zeros_like(pred_fake), pred_fake)
+            err_d = (err_d_real + err_d_fake) * 0.5
+
+        # we are only traning the trainable_weights and not all trainable_variables (TODO right assumption???)
+        grads_d = tape.gradient(err_d, self.netd.trainable_weights)
+        self.optimizer_d.apply_gradients(zip(grads_d, self.netd.trainable_weights))
+
+        #if err_d < 1e-5: reinit_weights(self.netd)
+        # TODO OperatorNotAllowedInGraphError: using a `tf.Tensor` as a Python `bool` is not allowed: AutoGraph did convert this function. This might indicate you are trying to use an unsupported feature.
+        # Replace with: https://www.tensorflow.org/api_docs/python/tf/cond
+        tf.cond(err_d < 1e-5, true_fn=reinit_weights(self.netd))
+
+        return {
+            "err_g": err_g,
+            "err_g_adv": err_g_adv,
+            "err_g_con": err_g_con,
+            "err_g_enc": err_g_enc,
+            "err_d": err_d,
+            "err_d_real": err_d_real,
+            "err_d_fake": err_d_fake
+        }
+
+def reinit_weights(model):
+    # https://github.com/keras-team/keras/issues/341#issuecomment-539198392
+    print('Re-initialize weights of model: {}'.format(model.name))
+    for layer in model.layers:
+        if isinstance(layer, tf.keras.Model):
+            reinit_weights(layer)
+            continue
+        print('Re-initialize weights of layer: {}'.format(layer.name))
+        for k, initializer in layer.__dict__.items():
+            if "initializer" not in k:
+                continue
+            var = getattr(layer, k.replace("_initializer", ""))
+            if var is not None:
+                var.assign(initializer(var.shape, var.dtype))
