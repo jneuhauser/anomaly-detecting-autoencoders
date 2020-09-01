@@ -338,51 +338,6 @@ class GANomaly(tf.keras.Model):
         return self.netg(x)[1], self.netd(x)[0]
 
     #@tf.function(autograph=False) # disable inherited tf.function(autograph=True) decorator
-    def train_step_old(self, data):
-        if isinstance(data, tuple):
-            data = data[0]
-        with tf.GradientTape() as tape:
-            latent_i, fake, latent_o = self.netg(data)
-
-            err_g_adv = self.loss_adv(self.netd(data)[1], self.netd(fake)[1])
-            err_g_con = self.loss_con(data, fake)
-            err_g_enc = self.loss_enc(latent_i, latent_o)
-            err_g = err_g_adv * self.weight_adv + \
-                    err_g_con * self.weight_con + \
-                    err_g_enc * self.weight_enc
-
-        # we are only traning the trainable_weights and not all trainable_variables (TODO right assumption???)
-        grads_g = tape.gradient(err_g, self.netg.trainable_weights)
-        self.optimizer_g.apply_gradients(zip(grads_g, self.netg.trainable_weights))
-
-        with tf.GradientTape() as tape:
-            pred_real, _ = self.netd(data)
-            pred_fake, _ = self.netd(fake)
-
-            err_d_real = self.loss_bce(tf.ones_like(pred_real), pred_real)
-            err_d_fake = self.loss_bce(tf.zeros_like(pred_fake), pred_fake)
-            err_d = (err_d_real + err_d_fake) * 0.5
-
-        # we are only traning the trainable_weights and not all trainable_variables (TODO right assumption???)
-        grads_d = tape.gradient(err_d, self.netd.trainable_weights)
-        self.optimizer_d.apply_gradients(zip(grads_d, self.netd.trainable_weights))
-
-        #if err_d < 1e-5: reset_weights(self.netd)
-        # OperatorNotAllowedInGraphError: using a `tf.Tensor` as a Python `bool` is not allowed: AutoGraph did convert this function. This might indicate you are trying to use an unsupported feature.
-        # Replace with: https://www.tensorflow.org/api_docs/python/tf/cond
-        tf.cond(tf.less(err_d, 1e-5), true_fn=lambda: reset_weights(self.netd), false_fn=lambda: None)
-
-        return {
-            "err_g": err_g,
-            "err_g_adv": err_g_adv,
-            "err_g_con": err_g_con,
-            "err_g_enc": err_g_enc,
-            "err_d": err_d,
-            "err_d_real": err_d_real,
-            "err_d_fake": err_d_fake
-        }
-
-    #@tf.function(autograph=False) # disable inherited tf.function(autograph=True) decorator
     def train_step(self, data):
         if isinstance(data, tuple):
             data = data[0]
