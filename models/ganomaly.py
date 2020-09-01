@@ -241,17 +241,20 @@ class NetD(tf.keras.Model):
 
         self.features = tf.keras.Sequential(layers[:-1])
         self.classifier = tf.keras.Sequential(layers[-1])
-        #self.classifier.add(tf.keras.layers.Reshape((1,))) # -> (batchsize, 1) instead of (batchsize,)
+        self.classifier.add(tf.keras.layers.Reshape((1,))) # (batchsize, 1, 1, 1) -> (batchsize, 1) instead of -> (batchsize,)
         self.classifier.add(tf.keras.layers.Activation('sigmoid'))
 
-    def call(self, x):
-        features = self.features(x)
-        classifier = self.classifier(features)
-        #classifier = classifier.view(-1, 1).squeeze(1) # From pytorch impl
-        # TODO: Is the following equivalent? Do we need this? What about batch size?
-        # https://www.tensorflow.org/api_docs/python/tf/keras/layers/Reshape honors batch size
-        classifier = tf.reshape(classifier, (-1, 1))
-        classifier = tf.squeeze(classifier, 1)
+    def call(self, x, training=False):
+        features = self.features(x, training)
+        classifier = self.classifier(features, training)
+        # From pytorch impl (batchsize, 1, 1, 1) -> (batchsize,)
+        #classifier = classifier.view(-1, 1).squeeze(1)
+        # Is the following equivalent? Do we need this? What about batch size?
+        #  -> We are using a keras.layer.Reshape() for (1, 1, 1) -> (1,)
+        #   -> Anyway, the shape is not relevant as we use tf.ones_like() and
+        #      tf.zeros_like() for discriminator loss calculation.
+        #classifier = tf.reshape(classifier, (-1, 1))
+        #classifier = tf.squeeze(classifier, 1)
 
         return classifier, features
 
@@ -267,10 +270,10 @@ class NetG(tf.keras.Model):
         self.decoder = Decoder(input_shape, latent_size, n_filters, n_extra_layers).model
         self.encoder_o = Encoder(input_shape, latent_size, n_filters, n_extra_layers).model
 
-    def call(self, x):
-        latent_i = self.encoder_i(x)
-        gen_img = self.decoder(latent_i)
-        latent_o = self.encoder_o(gen_img)
+    def call(self, x, training=False):
+        latent_i = self.encoder_i(x, training)
+        gen_img = self.decoder(latent_i, training)
+        latent_o = self.encoder_o(gen_img, training)
         return latent_i, gen_img, latent_o
 
     def summary(self):
@@ -295,14 +298,14 @@ class GANomaly(tf.keras.Model):
 
         # losses
         self.loss_adv = tf.keras.losses.MeanSquaredError()
-        self.weight_adv = 1 # TODO
+        self.weight_adv = 1 # TODO Make it a param
         self.loss_con = tf.keras.losses.MeanAbsoluteError()
-        self.weight_con = 50 # TODO
+        self.weight_con = 50 # TODO Make it a param
         self.loss_enc = tf.keras.losses.MeanSquaredError()
-        self.weight_enc = 1 # TODO
+        self.weight_enc = 1 # TODO Make it a param
         self.loss_bce = tf.keras.losses.BinaryCrossentropy()
 
-        # input TODO
+        # input TODO Do we need any of this? Probably fixed_input...
         #self.input = None
         #self.label = None
         #self.ground_truth = None
@@ -311,8 +314,9 @@ class GANomaly(tf.keras.Model):
         #self.fake_label = tf.zeros(shape=(batchsize,), dtype=tf.dtypes.float32)
 
         # optimizer
-        self.optimizer_d = tf.keras.optimizers.Adam(learning_rate=0.001, beta_1=0.9, beta_2=0.999)
-        self.optimizer_g = tf.keras.optimizers.Adam(learning_rate=0.001, beta_1=0.9, beta_2=0.999)
+        # TODO Make learing_rate and beta_1 a param
+        self.optimizer_d = tf.keras.optimizers.Adam(learning_rate=0.0002, beta_1=0.5, beta_2=0.999)
+        self.optimizer_g = tf.keras.optimizers.Adam(learning_rate=0.0002, beta_1=0.5, beta_2=0.999)
 
     def load_weights(self, path):
         #if os.path.exists(resume_path):
@@ -331,10 +335,10 @@ class GANomaly(tf.keras.Model):
 
     def call(self, x):
         # TODO output of netg ???
-        return self.netg(x)[1]
+        return self.netg(x)[1], self.netd(x)[0]
 
     #@tf.function(autograph=False) # disable inherited tf.function(autograph=True) decorator
-    def train_step(self, data):
+    def train_step_old(self, data):
         if isinstance(data, tuple):
             data = data[0]
         with tf.GradientTape() as tape:
@@ -361,6 +365,51 @@ class GANomaly(tf.keras.Model):
 
         # we are only traning the trainable_weights and not all trainable_variables (TODO right assumption???)
         grads_d = tape.gradient(err_d, self.netd.trainable_weights)
+        self.optimizer_d.apply_gradients(zip(grads_d, self.netd.trainable_weights))
+
+        #if err_d < 1e-5: reset_weights(self.netd)
+        # OperatorNotAllowedInGraphError: using a `tf.Tensor` as a Python `bool` is not allowed: AutoGraph did convert this function. This might indicate you are trying to use an unsupported feature.
+        # Replace with: https://www.tensorflow.org/api_docs/python/tf/cond
+        tf.cond(tf.less(err_d, 1e-5), true_fn=lambda: reset_weights(self.netd), false_fn=lambda: None)
+
+        return {
+            "err_g": err_g,
+            "err_g_adv": err_g_adv,
+            "err_g_con": err_g_con,
+            "err_g_enc": err_g_enc,
+            "err_d": err_d,
+            "err_d_real": err_d_real,
+            "err_d_fake": err_d_fake
+        }
+
+    #@tf.function(autograph=False) # disable inherited tf.function(autograph=True) decorator
+    def train_step(self, data):
+        if isinstance(data, tuple):
+            data = data[0]
+        with tf.GradientTape(watch_accessed_variables=False) as tape_g, tf.GradientTape(watch_accessed_variables=False) as tape_d:
+            tape_g.watch(self.netg.trainable_weights)
+            tape_d.watch(self.netd.trainable_weights)
+
+            latent_i, fake, latent_o = self.netg(data, training=True)
+
+            pred_real, feat_real = self.netd(data, training=True)
+            pred_fake, feat_fake = self.netd(fake, training=True)
+
+            err_g_adv = self.loss_adv(feat_real, feat_fake)
+            err_g_con = self.loss_con(data, fake)
+            err_g_enc = self.loss_enc(latent_i, latent_o)
+            err_g = err_g_adv * self.weight_adv + \
+                    err_g_con * self.weight_con + \
+                    err_g_enc * self.weight_enc
+
+            err_d_real = self.loss_bce(tf.ones_like(pred_real), pred_real)
+            err_d_fake = self.loss_bce(tf.zeros_like(pred_fake), pred_fake)
+            err_d = (err_d_real + err_d_fake) * 0.5
+
+        grads_g = tape_g.gradient(err_g, self.netg.trainable_weights)
+        self.optimizer_g.apply_gradients(zip(grads_g, self.netg.trainable_weights))
+
+        grads_d = tape_d.gradient(err_d, self.netd.trainable_weights)
         self.optimizer_d.apply_gradients(zip(grads_d, self.netd.trainable_weights))
 
         #if err_d < 1e-5: reset_weights(self.netd)
