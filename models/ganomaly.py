@@ -23,6 +23,10 @@ def print_model(model):
     for layer in model.layers:
         print_layer(layer)
 
+kernel_initializer = tf.keras.initializers.RandomNormal(mean=0.0, stddev=0.02)  # Conv
+beta_initializer = tf.keras.initializers.Zeros()                                # BatchNorm
+gamma_initializer = tf.keras.initializers.RandomNormal(mean=1.0, stddev=0.02)   # BatchNorm
+
 def reset_weights(model):
     # https://github.com/keras-team/keras/issues/341#issuecomment-539198392
     print('Re-initialize weights of model: {}'.format(model.name))
@@ -64,7 +68,7 @@ class Encoder(BaseModel):
             kernel_size=(4,4),
             strides=(2,2),
             padding='same',
-            #kernel_regularizer='l2',
+            kernel_initializer=kernel_initializer,
             use_bias=False,
             name='initial-conv-{}-{}'.format(input_shape[2], n_filters)
         ))
@@ -81,12 +85,14 @@ class Encoder(BaseModel):
                 kernel_size=(3,3),
                 strides=(1,1),
                 padding='same',
-                #kernel_regularizer='l2',
+                kernel_initializer=kernel_initializer,
                 use_bias=False,
                 name='extra-conv-{}-{}'.format(t, cndf)
             ))
             encoder.add(tf.keras.layers.BatchNormalization(
                 axis=-1,
+                beta_initializer=beta_initializer,
+                gamma_initializer=gamma_initializer,
                 name='extra-batchnorm-{}-{}'.format(t, cndf)
             ))
             encoder.add(tf.keras.layers.LeakyReLU(
@@ -103,12 +109,14 @@ class Encoder(BaseModel):
                 kernel_size=(4,4),
                 strides=(2,2),
                 padding='same',
-                #kernel_regularizer='l2',
+                kernel_initializer=kernel_initializer,
                 use_bias=False,
                 name='pyramid-conv-{}-{}'.format(old_cndf, cndf)
             ))
             encoder.add(tf.keras.layers.BatchNormalization(
                 axis=-1,
+                beta_initializer=beta_initializer,
+                gamma_initializer=gamma_initializer,
                 name='pyramid-batchnorm-{}'.format(cndf)
             ))
             encoder.add(tf.keras.layers.LeakyReLU(
@@ -121,7 +129,7 @@ class Encoder(BaseModel):
             kernel_size=(4,4),
             strides=(1,1),
             padding='valid',
-            #kernel_regularizer='l2',
+            kernel_initializer=kernel_initializer,
             use_bias=False,
             name='final-conv-{}-{}'.format(cndf, latent_size)
         ))
@@ -151,11 +159,14 @@ class Decoder(BaseModel):
             kernel_size=(4,4),
             strides=(1,1),
             padding='valid',
+            kernel_initializer=kernel_initializer,
             use_bias=False,
             name='initial-convt-{}-{}'.format(latent_size, cngf)
         ))
         decoder.add(tf.keras.layers.BatchNormalization(
             axis=-1,
+            beta_initializer=beta_initializer,
+            gamma_initializer=gamma_initializer,
             name='initial-batchnorm-{}'.format(cngf)
         ))
         decoder.add(tf.keras.layers.ReLU(
@@ -169,11 +180,14 @@ class Decoder(BaseModel):
                 kernel_size=(4,4),
                 strides=(2,2),
                 padding='same',
+                kernel_initializer=kernel_initializer,
                 use_bias=False,
                 name='pyramid-convt-{}-{}'.format(cngf, cngf // 2)
             ))
             decoder.add(tf.keras.layers.BatchNormalization(
                 axis=-1,
+                beta_initializer=beta_initializer,
+                gamma_initializer=gamma_initializer,
                 name='pyramid-batchnorm-{}'.format(cngf // 2)
             ))
             decoder.add(tf.keras.layers.ReLU(
@@ -188,11 +202,14 @@ class Decoder(BaseModel):
                 kernel_size=(3,3),
                 strides=(1,1),
                 padding='same',
+                kernel_initializer=kernel_initializer,
                 use_bias=False,
                 name='extra-conv-{}-{}'.format(t, cngf)
             ))
             decoder.add(tf.keras.layers.BatchNormalization(
                 axis=-1,
+                beta_initializer=beta_initializer,
+                gamma_initializer=gamma_initializer,
                 name='extra-batchnorm-{}-{}'.format(t, cngf)
             ))
             decoder.add(tf.keras.layers.ReLU(
@@ -204,6 +221,8 @@ class Decoder(BaseModel):
             kernel_size=(4,4),
             strides=(2,2),
             padding='same',
+            kernel_initializer=kernel_initializer,
+            use_bias=False,
             name='final-convt-{}-{}'.format(cngf, input_shape[2])
         ))
         decoder.add(tf.keras.layers.Activation(
@@ -347,7 +366,7 @@ class GANomaly(tf.keras.Model):
         #if err_d < 1e-5: reset_weights(self.netd)
         # OperatorNotAllowedInGraphError: using a `tf.Tensor` as a Python `bool` is not allowed: AutoGraph did convert this function. This might indicate you are trying to use an unsupported feature.
         # Replace with: https://www.tensorflow.org/api_docs/python/tf/cond
-        tf.cond(tf.less(err_d, 1e-5), true_fn=lambda: reset_weights(self.netg), false_fn=tf.no_op)
+        tf.cond(tf.less(err_d, 1e-5), true_fn=lambda: reset_weights(self.netd), false_fn=lambda: None)
 
         return {
             "err_g": err_g,
