@@ -144,11 +144,9 @@ class Decoder(BaseModel):
         assert input_shape[0] % 16 == 0, "image size has to be a multiple of 16 pixel"
 
         cngf, tisize = n_filters // 2, 4
-        #print('cngf', cngf, 'tisize', tisize)
         while tisize != input_shape[0]:
             cngf = cngf * 2
             tisize = tisize * 2
-            #print('cngf', cngf, 'tisize', tisize)
 
         decoder = tf.keras.Sequential(name='decoder')
 
@@ -241,20 +239,12 @@ class NetD(tf.keras.Model):
 
         self.features = tf.keras.Sequential(layers[:-1])
         self.classifier = tf.keras.Sequential(layers[-1])
-        self.classifier.add(tf.keras.layers.Reshape((1,))) # (batchsize, 1, 1, 1) -> (batchsize, 1) instead of -> (batchsize,)
+        self.classifier.add(tf.keras.layers.Reshape((1,)))
         self.classifier.add(tf.keras.layers.Activation('sigmoid'))
 
     def call(self, x, training=False):
         features = self.features(x, training)
         classifier = self.classifier(features, training)
-        # From pytorch impl (batchsize, 1, 1, 1) -> (batchsize,)
-        #classifier = classifier.view(-1, 1).squeeze(1)
-        # Is the following equivalent? Do we need this? What about batch size?
-        #  -> We are using a keras.layer.Reshape() for (1, 1, 1) -> (1,)
-        #   -> Anyway, the shape is not relevant as we use tf.ones_like() and
-        #      tf.zeros_like() for discriminator loss calculation.
-        #classifier = tf.reshape(classifier, (-1, 1))
-        #classifier = tf.squeeze(classifier, 1)
 
         return classifier, features
 
@@ -284,12 +274,8 @@ class NetG(tf.keras.Model):
 class GANomaly(tf.keras.Model):
     def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0, resume=False, resume_path=None):
         super().__init__()
-        self.netg = NetG(input_shape, latent_size, n_filters, n_extra_layers)
-        self.netd = NetD(input_shape, latent_size, n_filters, n_extra_layers)
-        # apply weights_init
-        # https://github.com/samet-akcay/ganomaly/blob/master/lib/networks.py#L11
-        # https://keras.io/api/layers/initializers/
-        # https://gist.github.com/jkleint/eb6dc49c861a1c21b612b568dd188668
+        self.net_g = NetG(input_shape, latent_size, n_filters, n_extra_layers)
+        self.net_d = NetD(input_shape, latent_size, n_filters, n_extra_layers)
 
         # resume from stored weights
         if resume:
@@ -310,8 +296,6 @@ class GANomaly(tf.keras.Model):
         #self.label = None
         #self.ground_truth = None
         #self.fixed_input = None
-        #self.real_label = tf.ones(shape=(batchsize,), dtype=tf.dtypes.float32)
-        #self.fake_label = tf.zeros(shape=(batchsize,), dtype=tf.dtypes.float32)
 
         # optimizer
         # TODO Make learing_rate and beta_1 a param
@@ -322,33 +306,35 @@ class GANomaly(tf.keras.Model):
         #if os.path.exists(resume_path):
         print('Loading pre-trained network weights from: "{}"'.format(
             os.path.abspath(path)), end=' ')
-        self.netg.load_weights(os.path.join(path, 'generator'))
-        self.netd.load_weights(os.path.join(path, 'discriminator'))
+        self.net_g.load_weights(os.path.join(path, 'generator'))
+        self.net_d.load_weights(os.path.join(path, 'discriminator'))
         print("-> Done\n")
 
     def save_weights(self, path):
         print('Saving pre-trained network weights to: "{}"'.format(
             os.path.abspath(path)), end=' ')
-        self.netg.save_weights(os.path.join(path, 'generator'))
-        self.netd.save_weights(os.path.join(path, 'discriminator'))
+        self.net_g.save_weights(os.path.join(path, 'generator'))
+        self.net_d.save_weights(os.path.join(path, 'discriminator'))
         print("-> Done\n")
 
     def call(self, x):
         # TODO output of netg ???
-        return self.netg(x)[1], self.netd(x)[0]
+        return self.net_g(x)[1], self.net_d(x)[0]
 
-    #@tf.function(autograph=False) # disable inherited tf.function(autograph=True) decorator
+    # disable inherited tf.function(autograph=True) decorator
+    #@tf.function(autograph=False)
     def train_step(self, data):
         if isinstance(data, tuple):
             data = data[0]
-        with tf.GradientTape(watch_accessed_variables=False) as tape_g, tf.GradientTape(watch_accessed_variables=False) as tape_d:
-            tape_g.watch(self.netg.trainable_weights)
-            tape_d.watch(self.netd.trainable_weights)
+        with tf.GradientTape(watch_accessed_variables=False) as tape_g, \
+             tf.GradientTape(watch_accessed_variables=False) as tape_d:
+            tape_g.watch(self.net_g.trainable_weights)
+            tape_d.watch(self.net_d.trainable_weights)
 
-            latent_i, fake, latent_o = self.netg(data, training=True)
+            latent_i, fake, latent_o = self.net_g(data, training=True)
 
-            pred_real, feat_real = self.netd(data, training=True)
-            pred_fake, feat_fake = self.netd(fake, training=True)
+            pred_real, feat_real = self.net_d(data, training=True)
+            pred_fake, feat_fake = self.net_d(fake, training=True)
 
             err_g_adv = self.loss_adv(feat_real, feat_fake)
             err_g_con = self.loss_con(data, fake)
@@ -361,16 +347,13 @@ class GANomaly(tf.keras.Model):
             err_d_fake = self.loss_bce(tf.zeros_like(pred_fake), pred_fake)
             err_d = (err_d_real + err_d_fake) * 0.5
 
-        grads_g = tape_g.gradient(err_g, self.netg.trainable_weights)
-        self.optimizer_g.apply_gradients(zip(grads_g, self.netg.trainable_weights))
+        grads_g = tape_g.gradient(err_g, self.net_g.trainable_weights)
+        self.optimizer_g.apply_gradients(zip(grads_g, self.net_g.trainable_weights))
 
-        grads_d = tape_d.gradient(err_d, self.netd.trainable_weights)
-        self.optimizer_d.apply_gradients(zip(grads_d, self.netd.trainable_weights))
+        grads_d = tape_d.gradient(err_d, self.net_d.trainable_weights)
+        self.optimizer_d.apply_gradients(zip(grads_d, self.net_d.trainable_weights))
 
-        #if err_d < 1e-5: reset_weights(self.netd)
-        # OperatorNotAllowedInGraphError: using a `tf.Tensor` as a Python `bool` is not allowed: AutoGraph did convert this function. This might indicate you are trying to use an unsupported feature.
-        # Replace with: https://www.tensorflow.org/api_docs/python/tf/cond
-        tf.cond(tf.less(err_d, 1e-5), true_fn=lambda: reset_weights(self.netd), false_fn=lambda: None)
+        tf.cond(tf.less(err_d, 1e-5), true_fn=lambda: reset_weights(self.net_d), false_fn=lambda: None)
 
         return {
             "err_g": err_g,
