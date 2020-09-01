@@ -3,13 +3,41 @@ import tensorflow as tf
 import tensorflow.python.keras.backend as K
 import os
 
-print_layer = lambda layer: print("  {:<24} inputs = {:>10} {:<20} outputs = {:>10} {:<20}".format(
-    layer.name,
-    np.prod(layer.input_shape[1:]),
-    str(layer.input_shape[1:]),
-    np.prod(layer.output_shape[1:]),
-    str(layer.output_shape[1:])
-))
+def print_layer(layer):
+    if isinstance(layer, tf.keras.Model):
+        print_model(layer)
+    if not isinstance(layer, tf.keras.layers.Layer):
+        raise ValueError("layer isn't a instance of tf.keras.layers.Layer")
+    print("  {:<24} inputs = {:>10} {:<20} outputs = {:>10} {:<20}".format(
+        layer.name,
+        np.prod(layer.input_shape[1:]),
+        str(layer.input_shape[1:]),
+        np.prod(layer.output_shape[1:]),
+        str(layer.output_shape[1:])
+    ))
+
+def print_model(model):
+    if not isinstance(model, tf.keras.Model):
+        raise ValueError("model isn't a instance of tf.keras.Model")
+    print('Model: "{}"'.format(model.name))
+    for layer in model.layers:
+        print_layer(layer)
+
+def reset_weights(model):
+    # https://github.com/keras-team/keras/issues/341#issuecomment-539198392
+    print('Re-initialize weights of model: {}'.format(model.name))
+    for layer in model.layers:
+        if isinstance(layer, tf.keras.Model):
+            reset_weights(layer)
+            continue
+        print('Re-initialize weights of layer: {}'.format(layer.name))
+        for k, initializer in layer.__dict__.items():
+            if "initializer" not in k:
+                continue
+            var = getattr(layer, k.replace("_initializer", ""))
+            if var is not None:
+                var.assign(initializer(var.shape, var.dtype))
+
 
 class BaseModel(tf.keras.Model):
     # pylint: disable=no-member
@@ -17,9 +45,7 @@ class BaseModel(tf.keras.Model):
         return self.model(inputs)
 
     def summary(self):
-        print("{} layers:".format(self.model.name))
-        for layer in self.model.layers:
-            print_layer(layer)
+        print_model(self.model)
         self.model.summary()
 
 
@@ -211,14 +237,8 @@ class NetD(tf.keras.Model):
         return classifier, features
 
     def summary(self):
-        print("features layers:")
-        for layer in self.features.layers:
-            print_layer(layer)
-        self.features.summary()
-        print("classifier layers:")
-        for layer in self.classifier.layers:
-            print_layer(layer)
-        self.classifier.summary()
+        print_model(self)
+        super().summary()
 
 
 class NetG(tf.keras.Model):
@@ -235,18 +255,8 @@ class NetG(tf.keras.Model):
         return latent_i, gen_img, latent_o
 
     def summary(self):
-        print("encoder_i layers:")
-        for layer in self.encoder_i.layers:
-            print_layer(layer)
-        self.encoder_i.summary()
-        print("decoder layers:")
-        for layer in self.decoder.layers:
-            print_layer(layer)
-        self.decoder.summary()
-        print("encoder_o layers:")
-        for layer in self.encoder_o.layers:
-            print_layer(layer)
-        self.encoder_o.summary()
+        print_model(self)
+        super().summary()
 
 
 class GANomaly(tf.keras.Model):
@@ -334,10 +344,10 @@ class GANomaly(tf.keras.Model):
         grads_d = tape.gradient(err_d, self.netd.trainable_weights)
         self.optimizer_d.apply_gradients(zip(grads_d, self.netd.trainable_weights))
 
-        #if err_d < 1e-5: reinit_weights(self.netd)
-        # TODO OperatorNotAllowedInGraphError: using a `tf.Tensor` as a Python `bool` is not allowed: AutoGraph did convert this function. This might indicate you are trying to use an unsupported feature.
+        #if err_d < 1e-5: reset_weights(self.netd)
+        # OperatorNotAllowedInGraphError: using a `tf.Tensor` as a Python `bool` is not allowed: AutoGraph did convert this function. This might indicate you are trying to use an unsupported feature.
         # Replace with: https://www.tensorflow.org/api_docs/python/tf/cond
-        tf.cond(err_d < 1e-5, true_fn=reinit_weights(self.netd))
+        tf.cond(tf.less(err_d, 1e-5), true_fn=lambda: reset_weights(self.netg), false_fn=tf.no_op)
 
         return {
             "err_g": err_g,
@@ -348,18 +358,3 @@ class GANomaly(tf.keras.Model):
             "err_d_real": err_d_real,
             "err_d_fake": err_d_fake
         }
-
-def reinit_weights(model):
-    # https://github.com/keras-team/keras/issues/341#issuecomment-539198392
-    print('Re-initialize weights of model: {}'.format(model.name))
-    for layer in model.layers:
-        if isinstance(layer, tf.keras.Model):
-            reinit_weights(layer)
-            continue
-        print('Re-initialize weights of layer: {}'.format(layer.name))
-        for k, initializer in layer.__dict__.items():
-            if "initializer" not in k:
-                continue
-            var = getattr(layer, k.replace("_initializer", ""))
-            if var is not None:
-                var.assign(initializer(var.shape, var.dtype))
