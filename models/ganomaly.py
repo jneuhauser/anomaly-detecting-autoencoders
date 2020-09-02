@@ -231,7 +231,7 @@ class Decoder(BaseModel):
         self.model = decoder
 
 
-class NetD(tf.keras.Model):
+class Discriminator(tf.keras.Model):
     def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0):
         super().__init__()
         model = Encoder(input_shape, 1, n_filters, n_extra_layers).model
@@ -253,7 +253,7 @@ class NetD(tf.keras.Model):
         super().summary()
 
 
-class NetG(tf.keras.Model):
+class Generator(tf.keras.Model):
     def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0):
         super().__init__()
         self.encoder_i = Encoder(input_shape, latent_size, n_filters, n_extra_layers).model
@@ -274,22 +274,14 @@ class NetG(tf.keras.Model):
 class GANomaly(tf.keras.Model):
     def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0, resume=False, resume_path=None):
         super().__init__()
-        self.net_g = NetG(input_shape, latent_size, n_filters, n_extra_layers)
-        self.net_d = NetD(input_shape, latent_size, n_filters, n_extra_layers)
+
+        self.net_gen = Generator(input_shape, latent_size, n_filters, n_extra_layers)
+        self.net_dis = Discriminator(input_shape, latent_size, n_filters, n_extra_layers)
 
         # resume from stored weights
         if resume:
             self.load_weights(resume_path)
         self.resume_path = resume_path
-
-        # losses
-        self.loss_adv = tf.keras.losses.MeanSquaredError()
-        self.weight_adv = 1 # TODO Make it a param
-        self.loss_con = tf.keras.losses.MeanAbsoluteError()
-        self.weight_con = 50 # TODO Make it a param
-        self.loss_enc = tf.keras.losses.MeanSquaredError()
-        self.weight_enc = 1 # TODO Make it a param
-        self.loss_bce = tf.keras.losses.BinaryCrossentropy()
 
         # input TODO Do we need any of this? Probably fixed_input...
         #self.input = None
@@ -297,68 +289,85 @@ class GANomaly(tf.keras.Model):
         #self.ground_truth = None
         #self.fixed_input = None
 
-        # optimizer
-        # TODO Make learing_rate and beta_1 a param
-        self.optimizer_d = tf.keras.optimizers.Adam(learning_rate=0.0002, beta_1=0.5, beta_2=0.999)
-        self.optimizer_g = tf.keras.optimizers.Adam(learning_rate=0.0002, beta_1=0.5, beta_2=0.999)
+    def compile(self,
+        loss: dict=dict(),
+        loss_weights: dict=dict(),
+        optimizer: dict=dict(),
+        **kwargs
+    ):
+        super().compile(**kwargs)
+
+        self.loss_adv = loss.get('adv', tf.keras.losses.MeanSquaredError())
+        self.loss_rec = loss.get('rec', tf.keras.losses.MeanAbsoluteError())
+        self.loss_enc = loss.get('enc', tf.keras.losses.MeanSquaredError())
+        self.loss_dis = loss.get('dis', tf.keras.losses.BinaryCrossentropy())
+
+        self.loss_wgt_adv = float(loss_weights.get('adv', 1))
+        self.loss_wgt_rec = float(loss_weights.get('rec', 50))
+        self.loss_wgt_enc = float(loss_weights.get('enc', 1))
+
+        self.optimizer_gen = optimizer.get('gen',
+            tf.keras.optimizers.Adam(learning_rate=0.0002, beta_1=0.5, beta_2=0.999))
+        self.optimizer_dis = optimizer.get('dis',
+            tf.keras.optimizers.Adam(learning_rate=0.0002, beta_1=0.5, beta_2=0.999))
 
     def load_weights(self, path):
         #if os.path.exists(resume_path):
         print('Loading pre-trained network weights from: "{}"'.format(
             os.path.abspath(path)), end=' ')
-        self.net_g.load_weights(os.path.join(path, 'generator'))
-        self.net_d.load_weights(os.path.join(path, 'discriminator'))
+        self.net_gen.load_weights(os.path.join(path, 'generator'))
+        self.net_dis.load_weights(os.path.join(path, 'discriminator'))
         print("-> Done\n")
 
     def save_weights(self, path):
         print('Saving pre-trained network weights to: "{}"'.format(
             os.path.abspath(path)), end=' ')
-        self.net_g.save_weights(os.path.join(path, 'generator'))
-        self.net_d.save_weights(os.path.join(path, 'discriminator'))
+        self.net_gen.save_weights(os.path.join(path, 'generator'))
+        self.net_dis.save_weights(os.path.join(path, 'discriminator'))
         print("-> Done\n")
 
     def call(self, x):
         # TODO output of netg ???
-        return self.net_g(x)[1], self.net_d(x)[0]
+        return self.net_gen(x)[1], self.net_dis(x)[0]
 
     # disable inherited tf.function(autograph=True) decorator
     #@tf.function(autograph=False)
     def train_step(self, data):
         if isinstance(data, tuple):
             data = data[0]
-        with tf.GradientTape(watch_accessed_variables=False) as tape_g, \
-             tf.GradientTape(watch_accessed_variables=False) as tape_d:
-            tape_g.watch(self.net_g.trainable_weights)
-            tape_d.watch(self.net_d.trainable_weights)
+        with tf.GradientTape(watch_accessed_variables=False) as tape_gen, \
+             tf.GradientTape(watch_accessed_variables=False) as tape_dis:
+            tape_gen.watch(self.net_gen.trainable_weights)
+            tape_dis.watch(self.net_dis.trainable_weights)
 
-            latent_i, fake, latent_o = self.net_g(data, training=True)
+            latent_i, fake, latent_o = self.net_gen(data, training=True)
 
-            pred_real, feat_real = self.net_d(data, training=True)
-            pred_fake, feat_fake = self.net_d(fake, training=True)
+            pred_real, feat_real = self.net_dis(data, training=True)
+            pred_fake, feat_fake = self.net_dis(fake, training=True)
 
             err_g_adv = self.loss_adv(feat_real, feat_fake)
-            err_g_con = self.loss_con(data, fake)
+            err_g_rec = self.loss_rec(data, fake)
             err_g_enc = self.loss_enc(latent_i, latent_o)
-            err_g = err_g_adv * self.weight_adv + \
-                    err_g_con * self.weight_con + \
-                    err_g_enc * self.weight_enc
+            err_g = err_g_adv * self.loss_wgt_adv + \
+                    err_g_rec * self.loss_wgt_rec + \
+                    err_g_enc * self.loss_wgt_enc
 
-            err_d_real = self.loss_bce(tf.ones_like(pred_real), pred_real)
-            err_d_fake = self.loss_bce(tf.zeros_like(pred_fake), pred_fake)
+            err_d_real = self.loss_dis(tf.ones_like(pred_real), pred_real)
+            err_d_fake = self.loss_dis(tf.zeros_like(pred_fake), pred_fake)
             err_d = (err_d_real + err_d_fake) * 0.5
 
-        grads_g = tape_g.gradient(err_g, self.net_g.trainable_weights)
-        self.optimizer_g.apply_gradients(zip(grads_g, self.net_g.trainable_weights))
+        grads_g = tape_gen.gradient(err_g, self.net_gen.trainable_weights)
+        self.optimizer_gen.apply_gradients(zip(grads_g, self.net_gen.trainable_weights))
 
-        grads_d = tape_d.gradient(err_d, self.net_d.trainable_weights)
-        self.optimizer_d.apply_gradients(zip(grads_d, self.net_d.trainable_weights))
+        grads_d = tape_dis.gradient(err_d, self.net_dis.trainable_weights)
+        self.optimizer_dis.apply_gradients(zip(grads_d, self.net_dis.trainable_weights))
 
-        tf.cond(tf.less(err_d, 1e-5), true_fn=lambda: reset_weights(self.net_d), false_fn=lambda: None)
+        tf.cond(tf.less(err_d, 1e-5), true_fn=lambda: reset_weights(self.net_dis), false_fn=lambda: None)
 
         return {
             "err_g": err_g,
             "err_g_adv": err_g_adv,
-            "err_g_con": err_g_con,
+            "err_g_rec": err_g_rec,
             "err_g_enc": err_g_enc,
             "err_d": err_d,
             "err_d_real": err_d_real,
