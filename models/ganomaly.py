@@ -262,9 +262,9 @@ class Generator(tf.keras.Model):
 
     def call(self, x, training=False):
         latent_i = self.encoder_i(x, training)
-        gen_img = self.decoder(latent_i, training)
-        latent_o = self.encoder_o(gen_img, training)
-        return latent_i, gen_img, latent_o
+        fake = self.decoder(latent_i, training)
+        latent_o = self.encoder_o(fake, training)
+        return fake, latent_i, latent_o
 
     def summary(self):
         print_model(self)
@@ -326,50 +326,115 @@ class GANomaly(tf.keras.Model):
         self.net_dis.save_weights(os.path.join(path, 'discriminator'))
         print("-> Done\n")
 
-    def call(self, x):
-        # TODO output of netg ???
-        return self.net_gen(x)[1], self.net_dis(x)[0]
+    def call(self, x, training=False):
+        # returns: reconstructed, latent_i, latent_o, classifier, features
+        return self.net_gen(x, training=training), self.net_dis(x, training=training)
 
     # disable inherited tf.function(autograph=True) decorator
     #@tf.function(autograph=False)
     def train_step(self, data):
-        if isinstance(data, tuple):
-            data = data[0]
+        # https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/keras/engine/training.py#L716
+        real, _, _ = tf.keras.utils.unpack_x_y_sample_weight(data)
+
         with tf.GradientTape(watch_accessed_variables=False) as tape_gen, \
              tf.GradientTape(watch_accessed_variables=False) as tape_dis:
             tape_gen.watch(self.net_gen.trainable_weights)
             tape_dis.watch(self.net_dis.trainable_weights)
 
-            latent_i, fake, latent_o = self.net_gen(data, training=True)
+            fake, latent_i, latent_o = self.net_gen(real, training=True)
 
-            pred_real, feat_real = self.net_dis(data, training=True)
-            pred_fake, feat_fake = self.net_dis(fake, training=True)
+            real_pred, real_feat = self.net_dis(real, training=True)
+            fake_pred, fake_feat = self.net_dis(fake, training=True)
 
-            err_g_adv = self.loss_adv(feat_real, feat_fake)
-            err_g_rec = self.loss_rec(data, fake)
-            err_g_enc = self.loss_enc(latent_i, latent_o)
-            err_g = err_g_adv * self.loss_wgt_adv + \
-                    err_g_rec * self.loss_wgt_rec + \
-                    err_g_enc * self.loss_wgt_enc
+            loss_gen_adv = self.loss_adv(real_feat, fake_feat)
+            loss_gen_rec = self.loss_rec(real, fake)
+            loss_gen_enc = self.loss_enc(latent_i, latent_o)
+            loss_gen = loss_gen_adv * self.loss_wgt_adv + \
+                    loss_gen_rec * self.loss_wgt_rec + \
+                    loss_gen_enc * self.loss_wgt_enc
 
-            err_d_real = self.loss_dis(tf.ones_like(pred_real), pred_real)
-            err_d_fake = self.loss_dis(tf.zeros_like(pred_fake), pred_fake)
-            err_d = (err_d_real + err_d_fake) * 0.5
+            loss_dis_real = self.loss_dis(tf.ones_like(real_pred), real_pred)
+            loss_dis_fake = self.loss_dis(tf.zeros_like(fake_pred), fake_pred)
+            loss_dis = (loss_dis_real + loss_dis_fake) * 0.5
 
-        grads_g = tape_gen.gradient(err_g, self.net_gen.trainable_weights)
-        self.optimizer_gen.apply_gradients(zip(grads_g, self.net_gen.trainable_weights))
+        grads_gen = tape_gen.gradient(loss_gen, self.net_gen.trainable_weights)
+        self.optimizer_gen.apply_gradients(zip(grads_gen, self.net_gen.trainable_weights))
 
-        grads_d = tape_dis.gradient(err_d, self.net_dis.trainable_weights)
-        self.optimizer_dis.apply_gradients(zip(grads_d, self.net_dis.trainable_weights))
+        grads_dis = tape_dis.gradient(loss_dis, self.net_dis.trainable_weights)
+        self.optimizer_dis.apply_gradients(zip(grads_dis, self.net_dis.trainable_weights))
 
-        tf.cond(tf.less(err_d, 1e-5), true_fn=lambda: reset_weights(self.net_dis), false_fn=lambda: None)
+        tf.cond(tf.less(loss_dis, 1e-5), true_fn=lambda: reset_weights(self.net_dis), false_fn=lambda: None)
 
         return {
-            "err_g": err_g,
-            "err_g_adv": err_g_adv,
-            "err_g_rec": err_g_rec,
-            "err_g_enc": err_g_enc,
-            "err_d": err_d,
-            "err_d_real": err_d_real,
-            "err_d_fake": err_d_fake
+            "loss_gen": loss_gen,
+            "loss_gen_adv": loss_gen_adv,
+            "loss_gen_rec": loss_gen_rec,
+            "loss_gen_enc": loss_gen_enc,
+            "loss_dis": loss_dis,
+            "loss_dis_real": loss_dis_real,
+            "loss_dis_fake": loss_dis_fake
         }
+
+    def test_step(self, data):
+        # test_step():  https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/keras/engine/training.py#L1148-L1180
+        # evaluate():   https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/keras/engine/training.py#L1243-L1394
+        # fit():        https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/keras/engine/training.py#L824-L1146
+
+        x, y, _ = tf.keras.utils.unpack_x_y_sample_weight(data)
+        # x.shape: (batchsize, width, height, depth)
+        # y.shape: (batchsize, 1)
+
+        _, latent_i, latent_o = self.net_gen(x, training=False)
+        # letent_x.shape: (batchsize, 1, 1, latent_size)
+
+        error = tf.keras.backend.mean(tf.keras.backend.square(latent_i - latent_o), axis=-1)
+        # error.shape: (batchsize, 1, 1, 1)
+
+        error = tf.reshape(error, (-1, 1))
+        #error = tf.reshape(error, tf.shape(y))
+        # error.shape: (batchsize, 1)
+
+        # error: high error = abnormal, low error = normal
+        # y = label: normal = 0, abnormal = 1
+        # AUC (ROC) requires: per image error <= y per image label
+
+        # TODO Implement calculation of AUC (ROC) performance
+        # With Callbacks: https://www.tensorflow.org/api_docs/python/tf/keras/callbacks/Callback
+        #   Examples:
+        #       CallbackList():  https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/keras/callbacks.py#L199-L589
+        #       EarlyStopping(): https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/keras/callbacks.py#L1559-L1690
+        #       ProgbarLogger(): https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/keras/callbacks.py#L896-L1026
+        # 1) Gather all per image values                    -> callbacks.on_test_batch_end(end_step, logs)
+        # 2) Gather all per image labels                    -> ??? validation_data isn't shuffled, possible solutions:
+        #                                                      -> pass test_labels as argument to __init__() of custom callback
+        #                                                      -> store results inside this model, implement set_model() and
+        #                                                         calculate from callbacks.on_test_end(logs) with access to the model
+        #                                                         https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/keras/callbacks.py#L274
+        #                                                      -> ???
+        # 3) Scale error vector between [0, 1]              -> callbacks.on_test_end(logs)
+        # 4) Calculate metric AUC (ROC)                     -> callbacks.on_test_end(logs)
+        # 5) Keep track of best metric and save best model  -> callbacks.on_test_end(logs)
+
+        return {"loss": error}
+
+        # Evaluation of labels and errors is useless???
+        self.compiled_metrics.update_state(y, error)
+
+        return {m.name: m.result() for m in self.metrics}
+
+    def predict_step(self, data):
+        # https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/keras/engine/training.py#L1396
+
+        x, _, _ = tf.keras.utils.unpack_x_y_sample_weight(data)
+        # x.shape: (batchsize, width, height, depth)
+
+        _, latent_i, latent_o = self.net_gen(x, training=False)
+        # letent_x.shape: (batchsize, 1, 1, latent_size)
+
+        error = tf.keras.backend.mean(tf.keras.backend.square(latent_i - latent_o), axis=-1)
+        # error.shape: (batchsize, 1, 1, 1)
+
+        error = tf.reshape(error, (-1, 1))
+        # error.shape: (batchsize, 1)
+
+        return error
