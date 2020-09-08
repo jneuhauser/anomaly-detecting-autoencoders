@@ -88,9 +88,9 @@ def create_anomaly_dataset(dataset, abnormal_class=0, normal_test_percentage=20,
 
     # normal=0, abnormal=1
     #nrm_lbl[:] = 0
-    nrm_lbl = np.zeros_like(nrm_lbl)
+    nrm_lbl = np.zeros_like(nrm_lbl).reshape((-1, 1))
     #abn_lbl[:] = 0
-    abn_lbl = np.ones_like(abn_lbl)
+    abn_lbl = np.ones_like(abn_lbl).reshape((-1, 1))
 
     # split off test percentage from normal data
     tst_end = int((len(nrm_img) * normal_test_percentage) / 100)
