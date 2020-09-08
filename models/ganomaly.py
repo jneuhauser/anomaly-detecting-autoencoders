@@ -394,33 +394,7 @@ class GANomaly(tf.keras.Model):
         #error = tf.reshape(error, tf.shape(y))
         # error.shape: (batchsize, 1)
 
-        # error: high error = abnormal, low error = normal
-        # y = label: normal = 0, abnormal = 1
-        # AUC (ROC) requires: per image error <= y per image label
-
-        # TODO Implement calculation of AUC (ROC) performance
-        # With Callbacks: https://www.tensorflow.org/api_docs/python/tf/keras/callbacks/Callback
-        #   Examples:
-        #       CallbackList():  https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/keras/callbacks.py#L199-L589
-        #       EarlyStopping(): https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/keras/callbacks.py#L1559-L1690
-        #       ProgbarLogger(): https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/keras/callbacks.py#L896-L1026
-        # 1) Gather all per image values                    -> callbacks.on_test_batch_end(end_step, logs)
-        # 2) Gather all per image labels                    -> ??? validation_data isn't shuffled, possible solutions:
-        #                                                      -> pass test_labels as argument to __init__() of custom callback
-        #                                                      -> store results inside this model, implement set_model() and
-        #                                                         calculate from callbacks.on_test_end(logs) with access to the model
-        #                                                         https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/keras/callbacks.py#L274
-        #                                                      -> ???
-        # 3) Scale error vector between [0, 1]              -> callbacks.on_test_end(logs)
-        # 4) Calculate metric AUC (ROC)                     -> callbacks.on_test_end(logs)
-        # 5) Keep track of best metric and save best model  -> callbacks.on_test_end(logs)
-
         return {"loss": error}
-
-        # Evaluation of labels and errors is useless???
-        self.compiled_metrics.update_state(y, error)
-
-        return {m.name: m.result() for m in self.metrics}
 
     def predict_step(self, data):
         # https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/keras/engine/training.py#L1396
@@ -438,3 +412,91 @@ class GANomaly(tf.keras.Model):
         # error.shape: (batchsize, 1)
 
         return error
+
+
+class ADModelEvaluator(tf.keras.callbacks.Callback):
+    def __init__(self, test_labels):
+        super().__init__()
+
+        self.test_labels = test_labels
+        self.test_results = np.zeros(test_labels.shape, dtype=np.float32)
+        self.test_results_idx_start = 0
+        self.test_results_idx_end = 0
+        self.metric = tf.keras.metrics.AUC()
+        self.best_epoch = 0
+        self.best_result = 0.
+        self.best_weights = None
+        self.ptp_val = 0.
+        self.min_val = 0.
+        self.best_result_ptp_val = 0.
+        self.best_result_min_val = 0.
+
+    # Parent class make this:
+    #def set_params(self, params):
+    #    print("set_params({})".format(params))
+    #    self.params = params
+
+    # Parent class make this:
+    #def set_model(self, model):
+    #    self.model = model
+
+    def on_epoch_begin(self, epoch, logs=None):
+        #print("on_epoch_begin({}, {})".format(epoch, logs))
+        pass
+
+    def on_epoch_end(self, epoch, logs=None):
+        #print("on_epoch_end({}, {})".format(epoch, logs))
+        # Keep track of best metric and save best model
+        if self.metric.result().numpy() > self.best_result:
+            self.best_epoch = epoch
+            self.best_result = self.metric.result().numpy()
+            self.best_weights = self.model.get_weights() # better store it as file
+            self.best_result_ptp_val = self.ptp_val
+            self.best_result_min_val = self.min_val
+        # Print determined values
+        print("\nCurr Epoch {:02d}: AUC(ROC): {:.5f}, ptp_val: {:.5f}, min_val: {:.5f}".format(
+            epoch+1,
+            self.metric.result().numpy(),
+            self.ptp_val,
+            self.min_val
+        ))
+        print("Best Epoch {:02d}: AUC(ROC): {:.5f}, ptp_val: {:.5f}, min_val: {:.5f}".format(
+            self.best_epoch+1,
+            self.best_result,
+            self.best_result_ptp_val,
+            self.best_result_min_val
+        ))
+
+    def on_test_begin(self, logs=None):
+        #print("on_test_begin({})".format(logs))
+        # Prepare data structures
+        self.metric.reset_states()
+        self.test_results_idx_start = 0
+        self.test_results_idx_end = 0
+
+    def on_test_end(self, logs=None):
+        #print("on_test_end({})".format(logs))
+        # Scale error vector between [0, 1]
+        self.min_val = np.min(self.test_results)
+        self.ptp_val = np.ptp(self.test_results)
+        self.test_results -= self.min_val
+        self.test_results /= self.ptp_val
+        #self.max_val = np.max(self.test_results)
+        #self.min_val = np.min(self.test_results)
+        #self.test_results = (self.test_results - self.min_val) / (self.max_val - self.min_val)
+        # Calculate metric AUC (ROC)
+        self.metric.update_state(self.test_labels, self.test_results)
+
+    def on_test_batch_begin(self, batch, logs=None):
+        #print("on_test_batch_begin({}, {})".format(batch, logs))
+        pass
+
+    def on_test_batch_end(self, batch, logs=None):
+        #print("on_test_batch_end({}, {})".format(batch, logs))
+        logs = logs or {}
+        loss = logs.get('loss')
+        batch_size = loss.shape[0]
+        # Gather all per image errors
+        self.test_results_idx_end += batch_size
+        self.test_results[self.test_results_idx_start:self.test_results_idx_end] = loss
+        self.test_results_idx_start += batch_size
