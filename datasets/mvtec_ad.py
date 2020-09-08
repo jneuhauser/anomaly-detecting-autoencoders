@@ -71,12 +71,12 @@ def _get_extracted_ds_root(category):
         file = files[category]
     except KeyError:
         raise ValueError("{} is not a valid category name".format(category))
-    
+
     # tensorflow doesn't honor KERAS_HOME
     # https://github.com/tensorflow/tensorflow/issues/38831
     def get_cache_dir():
         return os.getenv('KERAS_HOME') or os.path.join(os.path.expanduser('~'), '.keras')
-    
+
     try:
         path = tf.keras.utils.get_file(
             fname = file["fname"],
@@ -93,29 +93,28 @@ def _get_extracted_ds_root(category):
         #  $ find ${KERAS_HOME:-~/.keras}/datasets -type f -exec chmod 664 {} \;
         #  $ find ${KERAS_HOME:-~/.keras}/datasets -maxdepth 1 -mindepth 1 -type d -exec rm -rf {} \;
         path = os.path.join(get_cache_dir(), "datasets", file["fname"])
-    
+
     ds_root = os.path.join(os.path.dirname(path), category)
     if not os.path.isdir(ds_root):
         raise NotADirectoryError(ds_root)
-    
+
     return ds_root
 
 
 def get_labeled_dataset(category, split='train'):
     ds_root = _get_extracted_ds_root(category)
-    
+
     # everything except 'TRAIN' and 'train' results in 'test'
     split = split.lower()
     if not isinstance(split, str) or split != 'train':
         split = 'test'
-    
+
     ds_list = tf.data.Dataset.list_files(os.path.join(ds_root, split, '*', '*.png'))
-    
+
     def process_path(file_path):
         label = tf.strings.split(file_path, os.path.sep)[-2]
         image = tf.io.read_file(file_path)
         image = tf.io.decode_png(image)#, channels=0, dtype=tf.dtypes.uint8)
         return image, label
-    
+
     return ds_list.map(process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-    
