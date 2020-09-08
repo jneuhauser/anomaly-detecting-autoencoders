@@ -101,7 +101,7 @@ def _get_extracted_ds_root(category):
     return ds_root
 
 
-def get_labeled_dataset(category, split='train'):
+def get_labeled_dataset(category, split='train', image_channels=0, binary_labels=False):
     ds_root = _get_extracted_ds_root(category)
 
     # everything except 'TRAIN' and 'train' results in 'test'
@@ -114,7 +114,13 @@ def get_labeled_dataset(category, split='train'):
     def process_path(file_path):
         label = tf.strings.split(file_path, os.path.sep)[-2]
         image = tf.io.read_file(file_path)
-        image = tf.io.decode_png(image)#, channels=0, dtype=tf.dtypes.uint8)
+        image = tf.io.decode_png(image, channels=image_channels)
+        image = tf.image.convert_image_dtype(image, dtype=tf.float32)
         return image, label
 
-    return ds_list.map(process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    ds = ds_list.map(process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+
+    if binary_labels:# and split == 'test':
+        ds = ds.map(lambda x, y: (x, 0 if y == 'good' else 1))
+
+    return ds
