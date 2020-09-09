@@ -110,3 +110,16 @@ def get_dataset_stl10(normalize=True, reshape=True, test_percentage=10, unlabele
     else:
         return (train_x, train_y), (test_x, test_y), unlabeled_x
 
+
+def get_dataset(name='mnist', **kwargs):
+    def invalid(**kwargs):
+        raise ValueError("{} isn't a valid dataset".format(name))
+    switcher = {
+        "mnist": get_dataset_mnist,
+        "fashion_mnist": get_dataset_fashion_mnist,
+        "cifar10": get_dataset_cifar10,
+        "cifar100": get_dataset_cifar100,
+        "stl10": get_dataset_stl10
+    }
+    func=switcher.get(name, invalid)
+    return func(**kwargs)
