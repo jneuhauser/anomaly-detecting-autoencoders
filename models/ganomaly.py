@@ -382,7 +382,7 @@ class GANomaly(tf.keras.Model):
 
         x, y, _ = tf.keras.utils.unpack_x_y_sample_weight(data)
         # x.shape: (batchsize, width, height, depth)
-        # y.shape: (batchsize, 1)
+        # y.shape: (batchsize, 1) on numpy array or (batchsize,) on tf.data.Dataset
 
         _, latent_i, latent_o = self.net_gen(x, training=False)
         # letent_x.shape: (batchsize, 1, 1, latent_size)
@@ -390,11 +390,10 @@ class GANomaly(tf.keras.Model):
         error = tf.keras.backend.mean(tf.keras.backend.square(latent_i - latent_o), axis=-1)
         # error.shape: (batchsize, 1, 1, 1)
 
-        error = tf.reshape(error, (-1, 1))
-        #error = tf.reshape(error, tf.shape(y))
-        # error.shape: (batchsize, 1)
-
-        return {"losses": error, "labels": y}
+        return {
+            "losses": tf.reshape(error, (-1, 1)),
+            "labels": tf.reshape(y, (-1, 1))
+            }
 
     def predict_step(self, data):
         # https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/keras/engine/training.py#L1396
@@ -424,11 +423,12 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
         self.test_results_idx_end = 0
 
         self.metric = tf.keras.metrics.AUC()
-        self.test_ptp_val = 0.
-        self.test_min_val = 0.
+        self.test_ptp_loss = 0.
+        self.test_min_loss = 0.
+        self.test_result = 0.
 
-        self.best_ptp_val = 0.
-        self.best_min_val = 0.
+        self.best_ptp_loss = 0.
+        self.best_min_loss = 0.
         self.best_result = 0.
         self.best_epoch = 0
         self.best_weights = None
@@ -436,24 +436,24 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs=None):
         #print("on_epoch_end({}, {})".format(epoch, logs))
         # Keep track of best metric and save best model
-        if self.metric.result().numpy() > self.best_result:
+        if self.test_result > self.best_result:
             self.best_epoch = epoch
             self.best_result = self.metric.result().numpy()
             self.best_weights = self.model.get_weights() # better store it as file
-            self.best_ptp_val = self.test_ptp_val
-            self.best_min_val = self.test_min_val
+            self.best_ptp_loss = self.test_ptp_loss
+            self.best_min_loss = self.test_min_loss
         # Print determined values
-        print("\nCurr Epoch {:02d}: AUC(ROC): {:.5f}, ptp_val: {:.5f}, min_val: {:.5f}".format(
+        print("\nCurr Epoch {:02d}: AUC(ROC): {:.5f}, ptp_loss: {:.5f}, min_loss: {:.5f}".format(
             epoch+1,
             self.metric.result().numpy(),
-            self.test_ptp_val,
-            self.test_min_val
+            self.test_ptp_loss,
+            self.test_min_loss
         ))
-        print("Best Epoch {:02d}: AUC(ROC): {:.5f}, ptp_val: {:.5f}, min_val: {:.5f}".format(
+        print("Best Epoch {:02d}: AUC(ROC): {:.5f}, ptp_loss: {:.5f}, min_loss: {:.5f}".format(
             self.best_epoch+1,
             self.best_result,
-            self.best_ptp_val,
-            self.best_min_val
+            self.best_ptp_loss,
+            self.best_min_loss
         ))
 
     def on_test_begin(self, logs=None):
@@ -469,15 +469,16 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
             raise ValueError("collected results count of {} doesn't match expected count of {}"
                 .format(self.test_results_idx_end, self.test_losses.shape[0]))
         # Scale error vector between [0, 1]
-        self.test_min_val = np.min(self.test_losses)
-        self.test_ptp_val = np.ptp(self.test_losses)
-        self.test_losses -= self.test_min_val
-        self.test_losses /= self.test_ptp_val
+        self.test_min_loss = np.min(self.test_losses)
+        self.test_ptp_loss = np.ptp(self.test_losses)
+        self.test_losses -= self.test_min_loss
+        self.test_losses /= self.test_ptp_loss
         #self.max_val = np.max(self.test_results)
         #self.min_val = np.min(self.test_results)
         #self.test_results = (self.test_results - self.min_val) / (self.max_val - self.min_val)
         # Calculate metric AUC (ROC)
         self.metric.update_state(self.test_labels, self.test_losses)
+        self.test_result = self.metric.result().numpy()
 
     def on_test_batch_end(self, batch, logs=None):
         #print("on_test_batch_end({}, {})".format(batch, logs))
