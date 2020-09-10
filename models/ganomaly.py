@@ -407,10 +407,7 @@ class GANomaly(tf.keras.Model):
         error = tf.keras.backend.mean(tf.keras.backend.square(latent_i - latent_o), axis=-1)
         # error.shape: (batchsize, 1, 1, 1)
 
-        error = tf.reshape(error, (-1, 1))
-        # error.shape: (batchsize, 1)
-
-        return error
+        return tf.reshape(error, (-1, 1))
 
 
 class ADModelEvaluator(tf.keras.callbacks.Callback):
@@ -426,6 +423,7 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
         self.test_ptp_loss = 0.
         self.test_min_loss = 0.
         self.test_result = 0.
+        self.test_results = []
 
         self.best_ptp_loss = 0.
         self.best_min_loss = 0.
@@ -435,6 +433,7 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
 
     def on_epoch_end(self, epoch, logs=None):
         #print("on_epoch_end({}, {})".format(epoch, logs))
+        self.test_results.append(self.test_result)
         # Keep track of best metric and save best model
         if self.test_result > self.best_result:
             self.best_epoch = epoch
@@ -468,7 +467,7 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
         if self.test_results_idx_end != self.test_losses.shape[0]:
             raise ValueError("collected results count of {} doesn't match expected count of {}"
                 .format(self.test_results_idx_end, self.test_losses.shape[0]))
-        # Scale error vector between [0, 1]
+        # Scale losses between [0, 1]
         self.test_min_loss = np.min(self.test_losses)
         self.test_ptp_loss = np.ptp(self.test_losses)
         self.test_losses -= self.test_min_loss
@@ -482,7 +481,7 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
 
     def on_test_batch_end(self, batch, logs=None):
         #print("on_test_batch_end({}, {})".format(batch, logs))
-        # Gather all per image losses and labels
+        # Gather all per batch losses and labels
         labels = logs.get('labels')
         losses = logs.get('losses')
         batch_size = losses.shape[0]
