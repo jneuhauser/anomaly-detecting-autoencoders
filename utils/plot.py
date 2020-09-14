@@ -4,11 +4,14 @@ import math
 import matplotlib.pyplot as plt
 
 
-def imshow(image, title=None):
+def imshow(image, title=None, greyscale=False):
     if len(image.shape) > 3:
         image = tf.squeeze(image, axis=0)
 
-    plt.imshow(image)
+    plt.imshow(
+        np.squeeze(image),
+        cmap=plt.cm.binary if greyscale else None
+    )
     if title:
         plt.title(title)
     plt.show()
