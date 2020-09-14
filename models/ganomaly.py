@@ -414,12 +414,17 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
     def __init__(self, test_count):
         super().__init__()
 
+        # AUROC as fixed metric
+        self.metric = tf.keras.metrics.AUC(
+            curve='ROC',
+            summation_method='interpolation'
+        )
+
         self.test_labels = np.zeros((test_count, 1), dtype=np.float32)
         self.test_losses = np.zeros((test_count, 1), dtype=np.float32)
         self.test_results_idx_start = 0
         self.test_results_idx_end = 0
 
-        self.metric = tf.keras.metrics.AUC()
         self.test_ptp_loss = 0.
         self.test_min_loss = 0.
         self.test_result = 0.
@@ -454,6 +459,14 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
             self.best_ptp_loss,
             self.best_min_loss
         ))
+        # debug
+        #print("TP: {}\nTN: {}\nFP: {}\nFN: {}\nTH: {}".format(
+        #    self.metric.true_positives,
+        #    self.metric.true_negatives,
+        #    self.metric.false_positives,
+        #    self.metric.false_negatives,
+        #    self.metric.thresholds
+        #))
 
     def on_test_begin(self, logs=None):
         # Prepare for new evaluation
@@ -471,7 +484,7 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
         self.test_ptp_loss = np.max(self.test_losses) - self.test_min_loss
         self.test_losses -= self.test_min_loss
         self.test_losses /= self.test_ptp_loss
-        # Calculate metric AUC (ROC)
+        # Calculate metric AUROC
         self.metric.update_state(self.test_labels, self.test_losses)
         self.test_result = self.metric.result().numpy()
 
