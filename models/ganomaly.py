@@ -432,19 +432,19 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
         self.best_weights = None
 
     def on_epoch_end(self, epoch, logs=None):
-        #print("on_epoch_end({}, {})".format(epoch, logs))
+        # Save epoch result history
         self.test_results.append(self.test_result)
         # Keep track of best metric and save best model
         if self.test_result > self.best_result:
             self.best_epoch = epoch
-            self.best_result = self.metric.result().numpy()
-            self.best_weights = self.model.get_weights() # better store it as file
+            self.best_result = self.test_result
             self.best_ptp_loss = self.test_ptp_loss
             self.best_min_loss = self.test_min_loss
+            self.best_weights = self.model.get_weights() # better store it as file
         # Print determined values
         print("\nCurr Epoch {:02d}: AUC(ROC): {:.5f}, ptp_loss: {:.5f}, min_loss: {:.5f}".format(
             epoch+1,
-            self.metric.result().numpy(),
+            self.test_result,
             self.test_ptp_loss,
             self.test_min_loss
         ))
@@ -456,31 +456,26 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
         ))
 
     def on_test_begin(self, logs=None):
-        #print("on_test_begin({})".format(logs))
         # Prepare for new evaluation
         self.metric.reset_states()
         self.test_results_idx_start = 0
         self.test_results_idx_end = 0
 
     def on_test_end(self, logs=None):
-        #print("on_test_end({})".format(logs))
+        # Raise error if not enoght results are collected
         if self.test_results_idx_end != self.test_losses.shape[0]:
             raise ValueError("collected results count of {} doesn't match expected count of {}"
                 .format(self.test_results_idx_end, self.test_losses.shape[0]))
         # Scale losses between [0, 1]
         self.test_min_loss = np.min(self.test_losses)
-        self.test_ptp_loss = np.ptp(self.test_losses)
+        self.test_ptp_loss = np.max(self.test_losses) - self.test_min_loss
         self.test_losses -= self.test_min_loss
         self.test_losses /= self.test_ptp_loss
-        #self.max_val = np.max(self.test_results)
-        #self.min_val = np.min(self.test_results)
-        #self.test_results = (self.test_results - self.min_val) / (self.max_val - self.min_val)
         # Calculate metric AUC (ROC)
         self.metric.update_state(self.test_labels, self.test_losses)
         self.test_result = self.metric.result().numpy()
 
     def on_test_batch_end(self, batch, logs=None):
-        #print("on_test_batch_end({}, {})".format(batch, logs))
         # Gather all per batch losses and labels
         labels = logs.get('labels')
         losses = logs.get('losses')
