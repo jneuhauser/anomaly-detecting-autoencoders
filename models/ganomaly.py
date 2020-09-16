@@ -2,13 +2,21 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.python.keras.backend as K
 import os
+import logging
 
-def print_layer(layer):
+logger   = logging.getLogger('models.ganomaly')
+debug    = logger.debug
+info     = logger.info
+warning  = logger.warning
+error    = logger.error
+critical = logger.critical
+
+def print_layer(layer, print_fn=print):
     if isinstance(layer, tf.keras.Model):
         print_model(layer)
     if not isinstance(layer, tf.keras.layers.Layer):
         raise ValueError("layer isn't a instance of tf.keras.layers.Layer")
-    print("  {:<24} inputs = {:>10} {:<20} outputs = {:>10} {:<20}".format(
+    print_fn("  {:<24} inputs = {:>10} {:<20} outputs = {:>10} {:<20}".format(
         layer.name,
         np.prod(layer.input_shape[1:]),
         str(layer.input_shape[1:]),
@@ -16,12 +24,12 @@ def print_layer(layer):
         str(layer.output_shape[1:])
     ))
 
-def print_model(model):
+def print_model(model, print_fn=print):
     if not isinstance(model, tf.keras.Model):
         raise ValueError("model isn't a instance of tf.keras.Model")
-    print('Model: "{}"'.format(model.name))
+    print_fn('Model: "{}"'.format(model.name))
     for layer in model.layers:
-        print_layer(layer)
+        print_layer(layer, print_fn=print_fn)
 
 kernel_initializer = tf.keras.initializers.RandomNormal(mean=0.0, stddev=0.02)  # Conv
 beta_initializer = tf.keras.initializers.Zeros()                                # BatchNorm
@@ -29,12 +37,12 @@ gamma_initializer = tf.keras.initializers.RandomNormal(mean=1.0, stddev=0.02)   
 
 def reset_weights(model):
     # https://github.com/keras-team/keras/issues/341#issuecomment-539198392
-    print('Re-initialize weights of model: {}'.format(model.name))
+    debug('Re-initialize weights of model: {}'.format(model.name))
     for layer in model.layers:
         if isinstance(layer, tf.keras.Model):
             reset_weights(layer)
             continue
-        print('Re-initialize weights of layer: {}'.format(layer.name))
+        debug('Re-initialize weights of layer: {}'.format(layer.name))
         for k, initializer in layer.__dict__.items():
             if "initializer" not in k:
                 continue
@@ -312,19 +320,18 @@ class GANomaly(tf.keras.Model):
             tf.keras.optimizers.Adam(learning_rate=0.0002, beta_1=0.5, beta_2=0.999))
 
     def load_weights(self, path):
-        #if os.path.exists(resume_path):
-        print('Loading pre-trained network weights from: "{}"'.format(
-            os.path.abspath(path)), end=' ')
+        if not (os.path.isfile(os.path.join(path, 'generator.index')) and
+                os.path.isfile(os.path.join(path, 'discriminator.index'))):
+            warning('No valid pre-trained network weights in: "{}"'.format(path))
+            return
         self.net_gen.load_weights(os.path.join(path, 'generator'))
         self.net_dis.load_weights(os.path.join(path, 'discriminator'))
-        print("-> Done\n")
+        info('Loaded pre-trained network weights from: "{}"'.format(path))
 
     def save_weights(self, path):
-        print('Saving pre-trained network weights to: "{}"'.format(
-            os.path.abspath(path)), end=' ')
         self.net_gen.save_weights(os.path.join(path, 'generator'))
         self.net_dis.save_weights(os.path.join(path, 'discriminator'))
-        print("-> Done\n")
+        info('Saved pre-trained network weights to: "{}"'.format(path))
 
     def call(self, x, training=False):
         # returns: reconstructed, latent_i, latent_o, classifier, features
@@ -411,8 +418,10 @@ class GANomaly(tf.keras.Model):
 
 
 class ADModelEvaluator(tf.keras.callbacks.Callback):
-    def __init__(self, test_count):
+    def __init__(self, test_count, model_dir=None):
         super().__init__()
+
+        self.model_dir = model_dir
 
         # AUROC as fixed metric
         self.metric = tf.keras.metrics.AUC(
@@ -440,27 +449,28 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
         # Save epoch result history
         self.test_results.append(self.test_result)
         # Keep track of best metric and save best model
-        if self.test_result > self.best_result:
+        if self.test_result >= self.best_result:
             self.best_epoch = epoch
             self.best_result = self.test_result
             self.best_ptp_loss = self.test_ptp_loss
             self.best_min_loss = self.test_min_loss
-            self.best_weights = self.model.get_weights() # better store it as file
+            self.best_weights = self.model.get_weights()
+            if self.model_dir:
+                self.model.save_weights(path=self.model_dir)
         # Print determined values
-        print("\nCurr Epoch {:02d}: AUC(ROC): {:.5f}, ptp_loss: {:.5f}, min_loss: {:.5f}".format(
+        info("Curr Epoch {:02d}: AUC(ROC): {:.5f}, ptp_loss: {:.5f}, min_loss: {:.5f}".format(
             epoch+1,
             self.test_result,
             self.test_ptp_loss,
             self.test_min_loss
         ))
-        print("Best Epoch {:02d}: AUC(ROC): {:.5f}, ptp_loss: {:.5f}, min_loss: {:.5f}".format(
+        info("Best Epoch {:02d}: AUC(ROC): {:.5f}, ptp_loss: {:.5f}, min_loss: {:.5f}".format(
             self.best_epoch+1,
             self.best_result,
             self.best_ptp_loss,
             self.best_min_loss
         ))
-        # debug
-        #print("TP: {}\nTN: {}\nFP: {}\nFN: {}\nTH: {}".format(
+        #debug("TP: {}\nTN: {}\nFP: {}\nFN: {}\nTH: {}".format(
         #    self.metric.true_positives,
         #    self.metric.true_negatives,
         #    self.metric.false_positives,
