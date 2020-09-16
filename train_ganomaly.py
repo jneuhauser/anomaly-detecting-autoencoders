@@ -49,6 +49,9 @@ default_args = {
     'latent_size': 100,
     'n_filters': 64,
     'n_extra_layers': 0,
+    'w_adv': 1,
+    'w_rec': 50,
+    'w_enc': 1,
 
     # debugging params
     'train_steps': None,
@@ -72,7 +75,11 @@ def build_model(args):
         n_filters=args.n_filters,
         n_extra_layers=args.n_extra_layers
     )
-    model.compile()
+    model.compile(loss_weights={
+        'adv': args.w_adv,
+        'rec': args.w_rec,
+        'enc': args.w_enc
+    })
     model.build((None, *image_shape))
 
     return model
@@ -251,6 +258,12 @@ def parse_args():
                         default=default_args['n_filters'])
     parser.add_argument('--n_extra_layers', type=int,
                         default=default_args['n_extra_layers'])
+    parser.add_argument('--w_adv', type=int,
+                        default=default_args['w_adv'])
+    parser.add_argument('--w_rec', type=int,
+                        default=default_args['w_rec'])
+    parser.add_argument('--w_enc', type=int,
+                        default=default_args['w_enc'])
 
     # debugging params
     parser.add_argument('--train_steps', type=int,
