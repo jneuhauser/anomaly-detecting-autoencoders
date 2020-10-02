@@ -1,8 +1,7 @@
-import numpy as np
-import tensorflow as tf
-import tensorflow.keras.backend as K
+# standard modules
 import os
 import logging
+from packaging import version
 
 logger   = logging.getLogger('models.ganomaly')
 debug    = logger.debug
@@ -10,6 +9,12 @@ info     = logger.info
 warning  = logger.warning
 error    = logger.error
 critical = logger.critical
+
+# external modules
+import numpy as np
+import tensorflow as tf
+import tensorflow.keras.backend as K
+assert version.parse('2.3') <= version.parse(tf.version.VERSION), "Tensorflow 2.3 or geater required"
 
 def print_layer(layer, print_fn=print):
     if isinstance(layer, tf.keras.Model):

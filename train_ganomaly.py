@@ -5,6 +5,7 @@ import sys
 import time
 import logging
 import json
+from packaging import version
 
 logger = logging.getLogger('train_ganomaly')
 debug = logger.debug
@@ -17,6 +18,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 # external modules
 import tensorflow as tf
+assert version.parse('2.3') <= version.parse(tf.version.VERSION), "Tensorflow 2.3 or geater required"
 import numpy as np
 
 # package modules
@@ -306,8 +308,8 @@ if __name__ == '__main__':
 
     # use eager execution for debugging
     if args.debug:
-        tf.config.experimental_run_functions_eagerly(True)
+        tf.config.run_functions_eagerly(True)
     else:
-        tf.config.experimental_run_functions_eagerly(False)
+        tf.config.run_functions_eagerly(False)
 
     main(args)
