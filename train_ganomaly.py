@@ -306,8 +306,8 @@ if __name__ == '__main__':
 
     # use eager execution for debugging
     if args.debug:
-        tf.config.run_functions_eagerly(True)
+        tf.config.experimental_run_functions_eagerly(True)
     else:
-        tf.config.run_functions_eagerly(False)
+        tf.config.experimental_run_functions_eagerly(False)
 
     main(args)
