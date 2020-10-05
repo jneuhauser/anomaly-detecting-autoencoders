@@ -167,7 +167,7 @@ def main(args):
 
     adme = ADModelEvaluator(
         test_count=test_count if args.eval_steps is None else args.eval_steps * args.batch_size,
-        model_dir=args.model_dir
+        model_dir=args.sm_model_dir or args.model_dir
     )
 
     results = model.fit(
@@ -281,7 +281,9 @@ def parse_args():
     parser.add_argument('--data_dir', type=str,
                         default=os.environ.get('SM_CHANNEL_DATA_DIR') or default_args['data_dir'])
     parser.add_argument('--model_dir', type=str,
-                        default=os.environ.get('SM_MODEL_DIR') or default_args['model_dir'])
+                        default=default_args['model_dir'])
+    parser.add_argument('--sm_model_dir', type=str,
+                        default=os.environ.get('SM_MODEL_DIR'))
     parser.add_argument('--output_data_dir', type=str,
                         default=os.environ.get('SM_OUTPUT_DATA_DIR') or default_args['output_data_dir'])
 
@@ -301,8 +303,8 @@ if __name__ == '__main__':
     debug('Know args: {}'.format(args))
     if unknown:
         debug('Unknown args: {}'.format(unknown))
-    sm_env_vals = ['{}="{}"'.format(
-        env, val) for env, val in os.environ.items() if env.startswith('SM_')]
+    sm_env_vals = ['{}="{}"'.format(env, val)
+        for env, val in os.environ.items() if env.startswith('SM_')]
     if sm_env_vals:
         debug('ENV: {}'.format(', '.join(sm_env_vals)))
 
