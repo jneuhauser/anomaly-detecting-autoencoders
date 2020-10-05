@@ -295,7 +295,8 @@ if __name__ == '__main__':
     args, unknown = parse_args()
 
     # setup logging
-    logging.basicConfig(level=args.log_level,
+    logging.basicConfig(stream=sys.stdout, # SageMaker doesn't log the default stderr
+                        level=args.log_level,
                         format='[%(asctime)s | %(name)s | %(levelname)s] %(message)s',
                         datefmt='%Y/%m/%d %H:%M:%S')
 
