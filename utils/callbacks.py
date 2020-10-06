@@ -1,5 +1,5 @@
 import logging
-logger   = logging.getLogger('callbacks')
+logger   = logging.getLogger(__name__)
 debug    = logger.debug
 info     = logger.info
 warning  = logger.warning

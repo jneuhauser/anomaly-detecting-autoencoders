@@ -1,3 +1,11 @@
+import logging
+logger   = logging.getLogger(__name__)
+debug    = logger.debug
+info     = logger.info
+warning  = logger.warning
+error    = logger.error
+critical = logger.critical
+
 import tensorflow as tf
 import numpy as np
 

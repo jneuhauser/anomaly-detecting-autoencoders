@@ -3,15 +3,15 @@ import argparse
 import os
 import sys
 import time
-import logging
 import json
 from packaging import version
 
-logger = logging.getLogger('train_ganomaly')
-debug = logger.debug
-info = logger.info
-warning = logger.warning
-error = logger.error
+import logging
+logger   = logging.getLogger('train_ganomaly')
+debug    = logger.debug
+info     = logger.info
+warning  = logger.warning
+error    = logger.error
 critical = logger.critical
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -299,6 +299,7 @@ if __name__ == '__main__':
     # setup logging
     logging.basicConfig(stream=sys.stdout, # SageMaker doesn't log the default stderr
                         level=args.log_level,
+                        # https://docs.python.org/3.8/library/logging.html#logrecord-attributes
                         format='[%(asctime)s | %(name)s | %(levelname)s] %(message)s',
                         datefmt='%Y/%m/%d %H:%M:%S')
 

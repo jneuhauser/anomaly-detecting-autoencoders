@@ -1,9 +1,9 @@
 # standard modules
 import os
-import logging
 from packaging import version
 
-logger   = logging.getLogger('ganomaly')
+import logging
+logger   = logging.getLogger(__name__)
 debug    = logger.debug
 info     = logger.info
 warning  = logger.warning
