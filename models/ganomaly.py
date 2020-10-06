@@ -68,6 +68,40 @@ class Generator(tf.keras.Model):
         self.decoder.summary(**kwargs)
         self.encoder_o.summary(**kwargs)
 
+    def test_step(self, data):
+        # test_step():  https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/keras/engine/training.py#L1148-L1180
+        # evaluate():   https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/keras/engine/training.py#L1243-L1394
+        # fit():        https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/keras/engine/training.py#L824-L1146
+
+        x, y, _ = tf.keras.utils.unpack_x_y_sample_weight(data)
+        # x.shape: (batchsize, width, height, depth)
+        # y.shape: (batchsize, 1) on numpy array or (batchsize,) on tf.data.Dataset
+
+        _, latent_i, latent_o = self(x, training=False)
+        # letent_x.shape: (batchsize, 1, 1, latent_size)
+
+        error = tf.keras.backend.mean(tf.keras.backend.square(latent_i - latent_o), axis=-1)
+        # error.shape: (batchsize, 1, 1, 1)
+
+        return {
+            "losses": tf.reshape(error, (-1, 1)),
+            "labels": tf.reshape(y, (-1, 1))
+            }
+
+    def predict_step(self, data):
+        # https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/keras/engine/training.py#L1396
+
+        x, _, _ = tf.keras.utils.unpack_x_y_sample_weight(data)
+        # x.shape: (batchsize, width, height, depth)
+
+        _, latent_i, latent_o = self(x, training=False)
+        # letent_x.shape: (batchsize, 1, 1, latent_size)
+
+        error = tf.keras.backend.mean(tf.keras.backend.square(latent_i - latent_o), axis=-1)
+        # error.shape: (batchsize, 1, 1, 1)
+
+        return tf.reshape(error, (-1, 1))
+
 
 class GANomaly(tf.keras.Model):
     def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0, resume=False, resume_path=None, **kwargs):
@@ -174,35 +208,7 @@ class GANomaly(tf.keras.Model):
         }
 
     def test_step(self, data):
-        # test_step():  https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/keras/engine/training.py#L1148-L1180
-        # evaluate():   https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/keras/engine/training.py#L1243-L1394
-        # fit():        https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/keras/engine/training.py#L824-L1146
-
-        x, y, _ = tf.keras.utils.unpack_x_y_sample_weight(data)
-        # x.shape: (batchsize, width, height, depth)
-        # y.shape: (batchsize, 1) on numpy array or (batchsize,) on tf.data.Dataset
-
-        _, latent_i, latent_o = self.net_gen(x, training=False)
-        # letent_x.shape: (batchsize, 1, 1, latent_size)
-
-        error = tf.keras.backend.mean(tf.keras.backend.square(latent_i - latent_o), axis=-1)
-        # error.shape: (batchsize, 1, 1, 1)
-
-        return {
-            "losses": tf.reshape(error, (-1, 1)),
-            "labels": tf.reshape(y, (-1, 1))
-            }
+        return self.net_gen.test_step(data)
 
     def predict_step(self, data):
-        # https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/keras/engine/training.py#L1396
-
-        x, _, _ = tf.keras.utils.unpack_x_y_sample_weight(data)
-        # x.shape: (batchsize, width, height, depth)
-
-        _, latent_i, latent_o = self.net_gen(x, training=False)
-        # letent_x.shape: (batchsize, 1, 1, latent_size)
-
-        error = tf.keras.backend.mean(tf.keras.backend.square(latent_i - latent_o), axis=-1)
-        # error.shape: (batchsize, 1, 1, 1)
-
-        return tf.reshape(error, (-1, 1))
+        return self.net_gen.predict_step(data)
