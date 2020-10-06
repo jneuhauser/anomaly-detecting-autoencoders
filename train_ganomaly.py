@@ -18,7 +18,6 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 # external modules
 import tensorflow as tf
-assert version.parse('2.3') <= version.parse(tf.version.VERSION), "Tensorflow 2.3 or geater required"
 import numpy as np
 
 # package modules
@@ -314,8 +313,7 @@ if __name__ == '__main__':
 
     # use eager execution for debugging
     if args.debug:
+        assert version.parse('2.3') <= version.parse(tf.version.VERSION), "Tensorflow 2.3 or geater required"
         tf.config.run_functions_eagerly(True)
-    else:
-        tf.config.run_functions_eagerly(False)
 
     main(args)

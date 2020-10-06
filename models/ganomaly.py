@@ -14,7 +14,6 @@ critical = logger.critical
 import numpy as np
 import tensorflow as tf
 import tensorflow.keras.backend as K
-assert version.parse('2.3') <= version.parse(tf.version.VERSION), "Tensorflow 2.3 or geater required"
 
 # own modules
 from models.networks import Encoder, Decoder
@@ -128,6 +127,8 @@ class GANomaly(tf.keras.Model):
         optimizer: dict=dict(),
         **kwargs
     ):
+        # Calling compile of the parent class does only work on tf 2.3 and greater
+        assert version.parse('2.3') <= version.parse(tf.version.VERSION), "Tensorflow 2.3 or geater required"
         super().compile(**kwargs)
 
         self.loss_adv = loss.get('adv', tf.keras.losses.MeanSquaredError())
