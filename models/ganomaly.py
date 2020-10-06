@@ -18,7 +18,7 @@ assert version.parse('2.3') <= version.parse(tf.version.VERSION), "Tensorflow 2.
 
 def print_layer(layer, print_fn=print):
     if isinstance(layer, tf.keras.Model):
-        print_model(layer)
+        print_model(layer, print_fn=print_fn)
     if not isinstance(layer, tf.keras.layers.Layer):
         raise ValueError("layer isn't a instance of tf.keras.layers.Layer")
     print_fn("  {:<24} inputs = {:>10} {:<20} outputs = {:>10} {:<20}".format(
@@ -62,7 +62,7 @@ class BaseModel(tf.keras.Model):
         return self.model(inputs)
 
     def summary(self, **kwargs):
-        print_model(self.model)
+        print_model(self.model, print_fn=kwargs.get('print_fn') or print)
         self.model.summary(**kwargs)
 
 
@@ -263,7 +263,7 @@ class Discriminator(tf.keras.Model):
         return classifier, features
 
     def summary(self, **kwargs):
-        print_model(self)
+        print_model(self, print_fn=kwargs.get('print_fn') or print)
         super().summary(**kwargs)
         self.features.summary(**kwargs)
         self.classifier.summary(**kwargs)
@@ -284,7 +284,7 @@ class Generator(tf.keras.Model):
         return fake, latent_i, latent_o
 
     def summary(self, **kwargs):
-        print_model(self)
+        print_model(self, print_fn=kwargs.get('print_fn') or print)
         super().summary(**kwargs)
         self.encoder_i.summary(**kwargs)
         self.decoder.summary(**kwargs)
