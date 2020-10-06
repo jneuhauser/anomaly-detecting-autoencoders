@@ -162,6 +162,8 @@ def main(args):
 
     model = build_model(args)
     model.summary(print_fn=info)
+    model.net_gen.summary(print_fn=info)
+    model.net_dis.summary(print_fn=info)
 
     #model.load_weights('./no/valid/path')
 

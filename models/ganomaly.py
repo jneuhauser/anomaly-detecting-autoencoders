@@ -61,9 +61,9 @@ class BaseModel(tf.keras.Model):
     def call(self, inputs):
         return self.model(inputs)
 
-    def summary(self):
+    def summary(self, **kwargs):
         print_model(self.model)
-        self.model.summary()
+        self.model.summary(**kwargs)
 
 
 class Encoder(BaseModel):
@@ -261,9 +261,11 @@ class Discriminator(tf.keras.Model):
 
         return classifier, features
 
-    def summary(self):
-        print_model(self)
-        super().summary()
+    def summary(self, **kwargs):
+        #print_model(self)
+        super().summary(**kwargs)
+        super().features.summary(**kwargs)
+        super().classifier.summary(**kwargs)
 
 
 class Generator(tf.keras.Model):
@@ -279,9 +281,12 @@ class Generator(tf.keras.Model):
         latent_o = self.encoder_o(fake, training)
         return fake, latent_i, latent_o
 
-    def summary(self):
-        print_model(self)
-        super().summary()
+    def summary(self, **kwargs):
+        #print_model(self)
+        super().summary(**kwargs)
+        self.encoder_i.summary(**kwargs)
+        self.decoder.summary(**kwargs)
+        self.encoder_o.summary(**kwargs)
 
 
 class GANomaly(tf.keras.Model):
