@@ -67,12 +67,12 @@ class BaseModel(tf.keras.Model):
 
 
 class Encoder(BaseModel):
-    def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0):
-        super().__init__()
+    def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0, **kwargs):
+        super().__init__(**kwargs)
         assert input_shape[0] == input_shape[1], "image width and height must be same size"
         assert input_shape[0] % 16 == 0, "image size has to be a multiple of 16 pixel"
 
-        encoder = tf.keras.Sequential(name='encoder')
+        encoder = tf.keras.Sequential(name=kwargs.get('name') or 'encoder')
 
         encoder.add(tf.keras.Input(shape=input_shape, name='input_1'))
 
@@ -151,8 +151,8 @@ class Encoder(BaseModel):
 
 
 class Decoder(BaseModel):
-    def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0):
-        super().__init__()
+    def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0, **kwargs):
+        super().__init__(**kwargs)
         assert input_shape[0] == input_shape[1], "image width and height must be same size"
         assert input_shape[0] % 16 == 0, "image size has to be a multiple of 16 pixel"
 
@@ -161,7 +161,7 @@ class Decoder(BaseModel):
             cngf = cngf * 2
             tisize = tisize * 2
 
-        decoder = tf.keras.Sequential(name='decoder')
+        decoder = tf.keras.Sequential(name=kwargs.get('name') or 'decoder')
 
         decoder.add(tf.keras.Input(shape=(1,1,latent_size), name='input_1'))
 
@@ -245,13 +245,14 @@ class Decoder(BaseModel):
 
 
 class Discriminator(tf.keras.Model):
-    def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0):
-        super().__init__()
+    def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0, **kwargs):
+        kwargs['name'] = type(self).__name__
+        super().__init__(**kwargs)
         model = Encoder(input_shape, 1, n_filters, n_extra_layers).model
         layers = list(model.layers)
 
-        self.features = tf.keras.Sequential(layers[:-1])
-        self.classifier = tf.keras.Sequential(layers[-1])
+        self.features = tf.keras.Sequential(layers[:-1], name='features')
+        self.classifier = tf.keras.Sequential(layers[-1], name='classifier')
         self.classifier.add(tf.keras.layers.Reshape((1,)))
         self.classifier.add(tf.keras.layers.Activation('sigmoid'))
 
@@ -262,18 +263,19 @@ class Discriminator(tf.keras.Model):
         return classifier, features
 
     def summary(self, **kwargs):
-        #print_model(self)
+        print_model(self)
         super().summary(**kwargs)
-        super().features.summary(**kwargs)
-        super().classifier.summary(**kwargs)
+        self.features.summary(**kwargs)
+        self.classifier.summary(**kwargs)
 
 
 class Generator(tf.keras.Model):
-    def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0):
-        super().__init__()
-        self.encoder_i = Encoder(input_shape, latent_size, n_filters, n_extra_layers).model
-        self.decoder = Decoder(input_shape, latent_size, n_filters, n_extra_layers).model
-        self.encoder_o = Encoder(input_shape, latent_size, n_filters, n_extra_layers).model
+    def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0, **kwargs):
+        kwargs['name'] = type(self).__name__
+        super().__init__(**kwargs)
+        self.encoder_i = Encoder(input_shape, latent_size, n_filters, n_extra_layers, name='encoder_i').model
+        self.decoder = Decoder(input_shape, latent_size, n_filters, n_extra_layers, name='decoder').model
+        self.encoder_o = Encoder(input_shape, latent_size, n_filters, n_extra_layers, name='encoder_o').model
 
     def call(self, x, training=False):
         latent_i = self.encoder_i(x, training)
@@ -282,7 +284,7 @@ class Generator(tf.keras.Model):
         return fake, latent_i, latent_o
 
     def summary(self, **kwargs):
-        #print_model(self)
+        print_model(self)
         super().summary(**kwargs)
         self.encoder_i.summary(**kwargs)
         self.decoder.summary(**kwargs)
@@ -290,8 +292,9 @@ class Generator(tf.keras.Model):
 
 
 class GANomaly(tf.keras.Model):
-    def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0, resume=False, resume_path=None):
-        super().__init__()
+    def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0, resume=False, resume_path=None, **kwargs):
+        kwargs['name'] = type(self).__name__
+        super().__init__(**kwargs)
 
         self.net_gen = Generator(input_shape, latent_size, n_filters, n_extra_layers)
         self.net_dis = Discriminator(input_shape, latent_size, n_filters, n_extra_layers)
