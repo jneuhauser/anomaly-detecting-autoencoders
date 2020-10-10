@@ -17,16 +17,20 @@ def print_layer(layer, print_fn=print):
         raise ValueError("layer isn't a instance of tf.keras.layers.Layer")
     print_fn("  {:<24} inputs = {:>10} {:<20} outputs = {:>10} {:<20}".format(
         layer.name,
-        np.prod(layer.input_shape[1:]),
-        str(layer.input_shape[1:]),
-        np.prod(layer.output_shape[1:]),
-        str(layer.output_shape[1:])
+        np.prod(layer.input_shape[1:] if isinstance(layer.input_shape, tuple) else 0),
+        str(layer.input_shape),
+        np.prod(layer.output_shape[1:] if isinstance(layer.output_shape, tuple) else 0),
+        str(layer.output_shape),
+        #layer.count_params()
     ))
 
 def print_model(model, print_fn=print):
     if not isinstance(model, tf.keras.Model):
         raise ValueError("model isn't a instance of tf.keras.Model")
-    print_fn('Model: "{}"'.format(model.name))
+    print_fn("Model: {:<19} params = {:>10}".format(
+        model.name,
+        model.count_params()
+    ))
     for layer in model.layers:
         print_layer(layer, print_fn=print_fn)
 
