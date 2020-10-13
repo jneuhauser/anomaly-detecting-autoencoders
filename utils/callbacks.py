@@ -11,7 +11,7 @@ import numpy as np
 
 
 class ADModelEvaluator(tf.keras.callbacks.Callback):
-    def __init__(self, test_count, model_dir=None):
+    def __init__(self, test_count, model_dir=None, early_stopping=None):
         super().__init__()
 
         self.model_dir = model_dir
@@ -37,6 +37,8 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
         self.best_result = 0.
         self.best_epoch = 0
         self.best_weights = None
+
+        self.early_stopping = early_stopping
 
     def on_epoch_end(self, epoch, logs=None):
         # Save epoch result history
@@ -70,6 +72,24 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
         #    self.metric.false_negatives,
         #    self.metric.thresholds
         #))
+        if (
+            self.early_stopping and
+            self.early_stopping > 0 and
+            (epoch - self.best_epoch) >= self.early_stopping
+        ):
+            self.stopped_epoch = epoch
+            self.model.stop_training = True
+
+    def on_train_begin(self, logs=None):
+        self.stopped_epoch = 0
+
+    def on_train_end(self, logs=None):
+        if self.stopped_epoch > 0:
+            info("Epoch {:02d}: early stopping after {} epoch{} of no improvement".format(
+                self.stopped_epoch + 1,
+                self.early_stopping,
+                's' if self.early_stopping > 1 else ''
+            ))
 
     def on_test_begin(self, logs=None):
         # Prepare for new evaluation
