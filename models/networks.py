@@ -1,3 +1,5 @@
+from math import log
+
 import logging
 logger   = logging.getLogger(__name__)
 debug    = logger.debug
@@ -27,8 +29,10 @@ gamma_initializer = tf.keras.initializers.RandomNormal(mean=1.0, stddev=0.02)   
 class Encoder(BaseModel):
     def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0, **kwargs):
         super().__init__(**kwargs)
-        assert input_shape[0] == input_shape[1], "image width and height must be same size"
-        assert input_shape[0] % 16 == 0, "image size has to be a multiple of 16 pixel"
+        if input_shape[0] != input_shape[1]:
+            raise ValueError("image width and height must be the same size")
+        if log(input_shape[0], 2) != int(log(input_shape[0], 2)):
+            raise ValueError("image width and height must be a power of 2")
 
         encoder = tf.keras.Sequential(name=kwargs.get('name') or 'encoder')
 
@@ -111,8 +115,10 @@ class Encoder(BaseModel):
 class Decoder(BaseModel):
     def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0, **kwargs):
         super().__init__(**kwargs)
-        assert input_shape[0] == input_shape[1], "image width and height must be same size"
-        assert input_shape[0] % 16 == 0, "image size has to be a multiple of 16 pixel"
+        if input_shape[0] != input_shape[1]:
+            raise ValueError("image width and height must be the same size")
+        if log(input_shape[0], 2) != int(log(input_shape[0], 2)):
+            raise ValueError("image width and height must be a power of 2")
 
         cngf, tisize = n_filters // 2, 4
         while tisize != input_shape[0]:
