@@ -18,7 +18,6 @@ import tensorflow.keras.backend as K
 # own modules
 from models.networks import Encoder, Decoder
 from utils.model import print_model, print_layer, reset_weights
-from utils.callbacks import ADModelEvaluator
 
 
 class Discriminator(tf.keras.Model):
