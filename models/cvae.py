@@ -76,6 +76,31 @@ class CVAE(tf.keras.Model):
         # Use input size as reconstruction loss weight
         self.loss_weight = tf.cast(tf.math.reduce_prod(input_shape), tf.float32)
 
+    def summary(self, **kwargs):
+        print_model(self)
+        super().summary(**kwargs)
+        self.net_enc.summary(**kwargs)
+        self.net_var.summary(**kwargs)
+        self.net_dec.summary(**kwargs)
+
+    def load_weights(self, path):
+        if not (os.path.isfile(os.path.join(path, 'encoder.index')) and
+                os.path.isfile(os.path.join(path, 'variational.index')) and
+                os.path.isfile(os.path.join(path, 'decoder.index'))):
+            warning('No valid pre-trained network weights in: "{}"'.format(path))
+            return
+        self.net_enc.load_weights(os.path.join(path, 'encoder'))
+        self.net_var.load_weights(os.path.join(path, 'variational'))
+        self.net_dec.load_weights(os.path.join(path, 'decoder'))
+        info('Loaded pre-trained network weights from: "{}"'.format(path))
+
+    def save_weights(self, path):
+        self.net_enc.save_weights(os.path.join(path, 'encoder'))
+        self.net_var.save_weights(os.path.join(path, 'variational'))
+        self.net_dec.save_weights(os.path.join(path, 'decoder'))
+        info('Saved pre-trained network weights to: "{}"'.format(path))
+
+
     def call(self, x, training=False):
         encoded_image = self.net_enc(x, training=training)
         _, _, z = self.net_var(encoded_image, training=training)
@@ -124,27 +149,3 @@ class CVAE(tf.keras.Model):
             },
             **{m.name: m.result() for m in self.metrics}
         }
-
-    def summary(self, **kwargs):
-        print_model(self)
-        super().summary(**kwargs)
-        self.net_enc.summary(**kwargs)
-        self.net_var.summary(**kwargs)
-        self.net_dec.summary(**kwargs)
-
-    def load_weights(self, path):
-        if not (os.path.isfile(os.path.join(path, 'encoder.index')) and
-                os.path.isfile(os.path.join(path, 'variational.index')) and
-                os.path.isfile(os.path.join(path, 'decoder.index'))):
-            warning('No valid pre-trained network weights in: "{}"'.format(path))
-            return
-        self.net_enc.load_weights(os.path.join(path, 'encoder'))
-        self.net_var.load_weights(os.path.join(path, 'variational'))
-        self.net_dec.load_weights(os.path.join(path, 'decoder'))
-        info('Loaded pre-trained network weights from: "{}"'.format(path))
-
-    def save_weights(self, path):
-        self.net_enc.save_weights(os.path.join(path, 'encoder'))
-        self.net_var.save_weights(os.path.join(path, 'variational'))
-        self.net_dec.save_weights(os.path.join(path, 'decoder'))
-        info('Saved pre-trained network weights to: "{}"'.format(path))

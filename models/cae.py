@@ -29,11 +29,6 @@ class CAE(tf.keras.Model):
         self.net_enc = Encoder(input_shape, latent_size, n_filters, n_extra_layers, name='encoder').model
         self.net_dec = Decoder(input_shape, latent_size, n_filters, n_extra_layers, name='decoder').model
 
-    def call(self, x, training=False):
-        encoded_image = self.net_enc(x, training=training)
-        decoded_image = self.net_dec(encoded_image, training=training)
-        return decoded_image
-
     def summary(self, **kwargs):
         print_model(self)
         super().summary(**kwargs)
@@ -53,6 +48,11 @@ class CAE(tf.keras.Model):
         self.net_enc.save_weights(os.path.join(path, 'encoder'))
         self.net_dec.save_weights(os.path.join(path, 'decoder'))
         info('Saved pre-trained network weights to: "{}"'.format(path))
+
+    def call(self, x, training=False):
+        encoded_image = self.net_enc(x, training=training)
+        decoded_image = self.net_dec(encoded_image, training=training)
+        return decoded_image
 
     def train_step(self, data):
         x, _, sample_weight = tf.keras.utils.unpack_x_y_sample_weight(data)

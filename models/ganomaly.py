@@ -32,17 +32,17 @@ class Discriminator(tf.keras.Model):
         self.classifier.add(tf.keras.layers.Reshape((1,)))
         self.classifier.add(tf.keras.layers.Activation('sigmoid'))
 
-    def call(self, x, training=False):
-        features = self.features(x, training)
-        classifier = self.classifier(features, training)
-
-        return classifier, features
-
     def summary(self, **kwargs):
         print_model(self, print_fn=kwargs.get('print_fn') or print)
         super().summary(**kwargs)
         self.features.summary(**kwargs)
         self.classifier.summary(**kwargs)
+
+    def call(self, x, training=False):
+        features = self.features(x, training)
+        classifier = self.classifier(features, training)
+
+        return classifier, features
 
 
 class Generator(tf.keras.Model):
@@ -53,18 +53,18 @@ class Generator(tf.keras.Model):
         self.decoder = Decoder(input_shape, latent_size, n_filters, n_extra_layers, name='decoder').model
         self.encoder_o = Encoder(input_shape, latent_size, n_filters, n_extra_layers, name='encoder_o').model
 
-    def call(self, x, training=False):
-        latent_i = self.encoder_i(x, training)
-        fake = self.decoder(latent_i, training)
-        latent_o = self.encoder_o(fake, training)
-        return fake, latent_i, latent_o
-
     def summary(self, **kwargs):
         print_model(self, print_fn=kwargs.get('print_fn') or print)
         super().summary(**kwargs)
         self.encoder_i.summary(**kwargs)
         self.decoder.summary(**kwargs)
         self.encoder_o.summary(**kwargs)
+
+    def call(self, x, training=False):
+        latent_i = self.encoder_i(x, training)
+        fake = self.decoder(latent_i, training)
+        latent_o = self.encoder_o(fake, training)
+        return fake, latent_i, latent_o
 
     def test_step(self, data):
         # test_step():  https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/keras/engine/training.py#L1148-L1180

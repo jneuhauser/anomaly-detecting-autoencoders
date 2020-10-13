@@ -58,11 +58,6 @@ class CNAE(tf.keras.Model):
         # Use input size as reconstruction loss weight
         self.loss_weight = tf.cast(tf.math.reduce_prod(input_shape), tf.float32)
 
-    def call(self, x, training=False):
-        x = self.net_enc(x, training=training)
-        x = self.net_dec(x, training=training)
-        return x
-
     def summary(self, **kwargs):
         print_model(self)
         super().summary(**kwargs)
@@ -82,3 +77,8 @@ class CNAE(tf.keras.Model):
         self.net_enc.save_weights(os.path.join(path, 'encoder'))
         self.net_dec.save_weights(os.path.join(path, 'decoder'))
         info('Saved pre-trained network weights to: "{}"'.format(path))
+
+    def call(self, x, training=False):
+        x = self.net_enc(x, training=training)
+        x = self.net_dec(x, training=training)
+        return x
