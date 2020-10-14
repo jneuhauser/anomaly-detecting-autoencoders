@@ -149,3 +149,24 @@ class CVAE(tf.keras.Model):
             },
             **{m.name: m.result() for m in self.metrics}
         }
+
+    def test_step(self, data):
+        x, y, _ = tf.keras.utils.unpack_x_y_sample_weight(data)
+
+        x_pred = self(x, training=False)
+
+        #loss = self.compiled_loss(
+        #        x,
+        #        decoded_image,
+        #        sample_weight=sample_weight,
+        #        regularization_losses=self.losses,
+        #    )
+
+        # we need a loss value per image which isn't provided by compiled_loss
+        # assume we always have a shape of (batch_size, width, height, depth)
+        losses = tf.keras.backend.mean(tf.keras.backend.square(x - x_pred), axis=[1,2,3])
+
+        return {
+            "losses": tf.reshape(losses, (-1, 1)),
+            "labels": tf.reshape(y, (-1, 1))
+            }
