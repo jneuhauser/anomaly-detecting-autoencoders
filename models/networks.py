@@ -29,6 +29,18 @@ beta_initializer = tf.keras.initializers.Zeros()                                
 gamma_initializer = tf.keras.initializers.RandomNormal(mean=1.0, stddev=0.02)   # BatchNorm
 
 class Encoder(BaseModel):
+    """DCGAN Decoder Network
+
+    Args:
+        input_shape (tuple): shape of one input datum (without batch size)
+        latent_size (int, optional): Size of the decoder input or of the latent space. Defaults to 100.
+        n_filters (int, optional): Filter count of the initial convolution layer. Defaults to 64.
+        n_extra_layers (int, optional): Count of additional layers. Defaults to 0.
+
+    Raises:
+        ValueError: If the image widht and height aren't the same. (image != quadratic)
+        ValueError: If the image widht or height aren't be a power of two.
+    """
     def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0, **kwargs):
         super().__init__(**kwargs)
         if input_shape[0] != input_shape[1]:
@@ -115,6 +127,18 @@ class Encoder(BaseModel):
 
 
 class Decoder(BaseModel):
+    """DCGAN Decoder Network
+
+    Args:
+        input_shape (tuple): shape of one input datum (without batch size)
+        latent_size (int, optional): Size of the decoder input or of the latent space. Defaults to 100.
+        n_filters (int, optional): Filter count of the initial convolution layer. Defaults to 64.
+        n_extra_layers (int, optional): Count of additional layers. Defaults to 0.
+
+    Raises:
+        ValueError: If the image widht and height aren't the same. (image != quadratic)
+        ValueError: If the image widht or height aren't be a power of two.
+    """
     def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0, **kwargs):
         super().__init__(**kwargs)
         if input_shape[0] != input_shape[1]:

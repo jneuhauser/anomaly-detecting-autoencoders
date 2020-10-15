@@ -24,6 +24,14 @@ from utils.model import print_model, print_layer, reset_weights
 
 class Discriminator(tf.keras.Model):
     def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0, **kwargs):
+        """GANomaly Generator Model
+
+        Args:
+            input_shape (tuple): shape of one input datum (without batch size)
+            latent_size (int, optional): Size of the decoder input or of the latent space. Defaults to 100.
+            n_filters (int, optional): Filter count of the initial convolution layer. Defaults to 64.
+            n_extra_layers (int, optional): Count of additional layers. Defaults to 0.
+        """
         kwargs['name'] = type(self).__name__
         super().__init__(**kwargs)
         model = Encoder(input_shape, 1, n_filters, n_extra_layers).model
@@ -48,6 +56,14 @@ class Discriminator(tf.keras.Model):
 
 
 class Generator(tf.keras.Model):
+    """GANomaly Generator Model
+
+    Args:
+        input_shape (tuple): shape of one input datum (without batch size)
+        latent_size (int, optional): Size of the decoder input or of the latent space. Defaults to 100.
+        n_filters (int, optional): Filter count of the initial convolution layer. Defaults to 64.
+        n_extra_layers (int, optional): Count of additional layers. Defaults to 0.
+    """
     def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0, **kwargs):
         kwargs['name'] = type(self).__name__
         super().__init__(**kwargs)
@@ -104,23 +120,20 @@ class Generator(tf.keras.Model):
 
 
 class GANomaly(tf.keras.Model):
-    def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0, resume=False, resume_path=None, **kwargs):
+    """GANomaly Model
+
+    Args:
+        input_shape (tuple): shape of one input datum (without batch size)
+        latent_size (int, optional): Size of the decoder input or of the latent space. Defaults to 100.
+        n_filters (int, optional): Filter count of the initial convolution layer. Defaults to 64.
+        n_extra_layers (int, optional): Count of additional layers. Defaults to 0.
+    """
+    def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0, **kwargs):
         kwargs['name'] = type(self).__name__
         super().__init__(**kwargs)
 
         self.net_gen = Generator(input_shape, latent_size, n_filters, n_extra_layers)
         self.net_dis = Discriminator(input_shape, latent_size, n_filters, n_extra_layers)
-
-        # resume from stored weights
-        if resume:
-            self.load_weights(resume_path)
-        self.resume_path = resume_path
-
-        # input TODO Do we need any of this? Probably fixed_input...
-        #self.input = None
-        #self.label = None
-        #self.ground_truth = None
-        #self.fixed_input = None
 
     def compile(self,
         loss: dict=dict(),
