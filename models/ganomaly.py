@@ -1,4 +1,6 @@
 # standard modules
+import sys
+assert sys.version_info >= (3, 0), "Python 3.0 or greater required"
 import os
 from packaging import version
 

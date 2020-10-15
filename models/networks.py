@@ -1,3 +1,5 @@
+import sys
+assert sys.version_info >= (3, 0), "Python 3.0 or greater required"
 from math import log
 
 import logging

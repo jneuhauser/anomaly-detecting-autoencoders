@@ -1,7 +1,8 @@
 # standard modules
+import sys
+assert sys.version_info >= (3, 5), "Python 3.5 or greater required"
 import argparse
 import os
-import sys
 import time
 import json
 from packaging import version

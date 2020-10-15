@@ -1,3 +1,5 @@
+import sys
+assert sys.version_info >= (3, 3), "Python 3.3 or greater required"
 import os
 import tensorflow as tf
 
