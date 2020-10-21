@@ -41,7 +41,7 @@ class Encoder(BaseModel):
         ValueError: If the image widht and height aren't the same. (image != quadratic)
         ValueError: If the image widht or height aren't be a power of two.
     """
-    def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0, **kwargs):
+    def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0, full_dcgan_encoder=False, **kwargs):
         super().__init__(**kwargs)
         if input_shape[0] != input_shape[1]:
             raise ValueError("image width and height must be the same size")
@@ -122,6 +122,17 @@ class Encoder(BaseModel):
             use_bias=False,
             name='final-conv-{}-{}'.format(cndf, latent_size)
         ))
+        if full_dcgan_encoder:
+            encoder.add(tf.keras.layers.BatchNormalization(
+                axis=-1,
+                beta_initializer=beta_initializer,
+                gamma_initializer=gamma_initializer,
+                name='final-batchnorm-{}'.format(latent_size)
+            ))
+            encoder.add(tf.keras.layers.LeakyReLU(
+                alpha=0.2,
+                name='final-relu-{}'.format(latent_size)
+            ))
 
         self.model = encoder
 
