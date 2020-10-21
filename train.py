@@ -24,8 +24,12 @@ import numpy as np
 # package modules
 from datasets.mvtec_ad import get_labeled_dataset
 from datasets.common import get_dataset
+from models.ganomaly import GANomaly
+from models.cae import CAE
+from models.cnae import CNAE
+from models.cvae import CVAE
+from utils.callbacks import ADModelEvaluator
 from utils.datasets import create_anomaly_dataset
-from models.ganomaly import GANomaly, ADModelEvaluator
 
 default_args = {
     # training params
@@ -48,12 +52,14 @@ default_args = {
     'repeat_dataset': None,
 
     # model params
+    'model_name': 'ganomaly',
     'latent_size': 100,
+    'intermediate_size': 100,   # only valid for cvae
     'n_filters': 64,
     'n_extra_layers': 0,
-    'w_adv': 1,
-    'w_rec': 50,
-    'w_enc': 1,
+    'w_adv': 1,                 # only valid for GANomaly
+    'w_rec': 50,                # only valid for GANomaly
+    'w_enc': 1,                 # only valid for GANomaly
 
     # debugging params
     'train_steps': None,
@@ -68,22 +74,69 @@ default_args = {
 }
 
 
-def build_model(args):
+def build_model(args) -> tf.keras.Model:
     image_shape = (args.image_size, args.image_size, args.image_channels)
 
-    model = GANomaly(
-        input_shape=image_shape,
-        latent_size=args.latent_size,
-        n_filters=args.n_filters,
-        n_extra_layers=args.n_extra_layers
-    )
-    model.compile(loss_weights={
-        'adv': args.w_adv,
-        'rec': args.w_rec,
-        'enc': args.w_enc
-    })
-    model.build((None, *image_shape))
+    def build_default(model_class, **kwargs):
+        return model_class(
+            input_shape=image_shape,
+            latent_size=args.latent_size,
+            n_filters=args.n_filters,
+            n_extra_layers=args.n_extra_layers,
+            **kwargs
+        )
 
+    def compile_default(model):
+        model.compile(
+            optimizer=tf.keras.optimizers.Adam(
+                learning_rate=args.learning_rate),
+            loss=tf.keras.losses.MeanSquaredError(),
+            metrics=[
+                tf.keras.losses.MeanAbsoluteError(),
+                tf.keras.losses.BinaryCrossentropy()
+            ]
+        )
+        return model
+
+    def build_ganomaly():
+        model = build_default(GANomaly)
+        model.compile(
+            loss={
+                'adv': tf.keras.losses.MeanSquaredError(),
+                'rec': tf.keras.losses.MeanAbsoluteError(),
+                'enc': tf.keras.losses.MeanSquaredError(),
+                'dis': tf.keras.losses.BinaryCrossentropy()
+            },
+            loss_weights={
+                'adv': args.w_adv,
+                'rec': args.w_rec,
+                'enc': args.w_enc
+            },
+            optimizer={
+                'gen': tf.keras.optimizers.Adam(
+                    learning_rate=args.learning_rate,
+                    beta_1=0.5, beta_2=0.999),
+                'dis': tf.keras.optimizers.Adam(
+                    learning_rate=args.learning_rate,
+                    beta_1=0.5, beta_2=0.999)
+            }
+        )
+        return model
+
+    def switcher_default():
+        warning("Unknown model_name, using 'ganomaly' as default!")
+        return build_ganomaly()
+
+    switcher = {
+        'ganomaly': build_ganomaly,
+        'cae': lambda: compile_default(build_default(CAE)),
+        'cnae': lambda: compile_default(build_default(CNAE)),
+        'cvae': lambda: compile_default(build_default(CVAE,
+                            intermediate_size=args.intermediate_size))
+    }
+    model = switcher.get(args.model_name, switcher_default)()
+
+    model.build((None, *image_shape))
     return model
 
 
@@ -162,8 +215,8 @@ def main(args):
 
     model = build_model(args)
     model.summary(print_fn=info)
-    model.net_gen.summary(print_fn=info)
-    model.net_dis.summary(print_fn=info)
+    #model.net_gen.summary(print_fn=info) # TODO call it from summary() of GANomaly
+    #model.net_dis.summary(print_fn=info)
 
     #model.load_weights('./no/valid/path')
 
@@ -256,8 +309,12 @@ def parse_args():
                         default=default_args['repeat_dataset'])
 
     # model params
+    parser.add_argument('--model_name', type=str,
+                        default=default_args['model_name'])
     parser.add_argument('--latent_size', type=int,
                         default=default_args['latent_size'])
+    parser.add_argument('--intermediate_size', type=int,
+                        default=default_args['intermediate_size'])
     parser.add_argument('--n_filters', type=int,
                         default=default_args['n_filters'])
     parser.add_argument('--n_extra_layers', type=int,
