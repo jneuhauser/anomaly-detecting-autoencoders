@@ -274,6 +274,10 @@ def parse_args():
             'error': logging.ERROR,
             'critical': logging.CRITICAL
         }.get(v, logging.INFO)
+    
+    def str2posint(v):
+        v = int(v)
+        return v if v > 0 else None
 
     parser = argparse.ArgumentParser()
 
@@ -309,7 +313,7 @@ def parse_args():
                         const=True, default=default_args['random_crop'])
     parser.add_argument('--random_brightness', type=str2bool, nargs='?',
                         const=True, default=default_args['random_brightness'])
-    parser.add_argument('--repeat_dataset', type=int,
+    parser.add_argument('--repeat_dataset', type=str2posint,
                         default=default_args['repeat_dataset'])
 
     # model params
@@ -331,9 +335,9 @@ def parse_args():
                         default=default_args['w_enc'])
 
     # debugging params
-    parser.add_argument('--train_steps', type=int,
+    parser.add_argument('--train_steps', type=str2posint,
                         default=default_args['train_steps'])
-    parser.add_argument('--eval_steps', type=int,
+    parser.add_argument('--eval_steps', type=str2posint,
                         default=default_args['eval_steps'])
     parser.add_argument('--log_level', type=str2logging,
                         default=default_args['log_level'])
