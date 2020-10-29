@@ -1,3 +1,6 @@
+#from __future__ import annotations # allows tuple[type, ...] instead of Tuple[type, ...]
+from typing import Tuple
+
 import sys
 assert sys.version_info >= (3, 0), "Python 3.0 or greater required"
 from math import log
@@ -36,12 +39,13 @@ class Encoder(BaseModel):
         latent_size (int, optional): Size of the decoder input or of the latent space. Defaults to 100.
         n_filters (int, optional): Filter count of the initial convolution layer. Defaults to 64.
         n_extra_layers (int, optional): Count of additional layers. Defaults to 0.
+        full_dcgan_encoder (bool, optional): Uses in the final layer also BatchNorm and LeakyReLU
 
     Raises:
         ValueError: If the image widht and height aren't the same. (image != quadratic)
         ValueError: If the image widht or height aren't be a power of two.
     """
-    def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0, full_dcgan_encoder=False, **kwargs):
+    def __init__(self, input_shape: Tuple[int, int, int], latent_size: int=100, n_filters: int=64, n_extra_layers: int=0, full_dcgan_encoder: bool=False, **kwargs):
         super().__init__(**kwargs)
         if input_shape[0] != input_shape[1]:
             raise ValueError("image width and height must be the same size")
@@ -151,7 +155,7 @@ class Decoder(BaseModel):
         ValueError: If the image widht and height aren't the same. (image != quadratic)
         ValueError: If the image widht or height aren't be a power of two.
     """
-    def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0, **kwargs):
+    def __init__(self, input_shape: Tuple[int, int, int], latent_size: int=100, n_filters: int=64, n_extra_layers: int=0, **kwargs):
         super().__init__(**kwargs)
         if input_shape[0] != input_shape[1]:
             raise ValueError("image width and height must be the same size")
