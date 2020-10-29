@@ -66,51 +66,52 @@ class Encoder(BaseModel):
             name='initial-relu-{}'.format(n_filters)
         ))
 
-        csize, cndf = input_shape[0] / 2, n_filters
+        last_layer_output_height = input_shape[0] // 2
+        last_layer_output_depth = n_filters
 
         for t in range(n_extra_layers):
             encoder.add(tf.keras.layers.Conv2D(
-                filters=cndf,
+                filters=last_layer_output_depth,
                 kernel_size=(3,3),
                 strides=(1,1),
                 padding='same',
                 kernel_initializer=kernel_initializer,
                 use_bias=False,
-                name='extra-conv-{}-{}'.format(t, cndf)
+                name='extra-conv-{}-{}'.format(t, last_layer_output_depth)
             ))
             encoder.add(tf.keras.layers.BatchNormalization(
                 axis=-1,
                 beta_initializer=beta_initializer,
                 gamma_initializer=gamma_initializer,
-                name='extra-batchnorm-{}-{}'.format(t, cndf)
+                name='extra-batchnorm-{}-{}'.format(t, last_layer_output_depth)
             ))
             encoder.add(tf.keras.layers.LeakyReLU(
                 alpha=0.2,
-                name='extra-relu-{}-{}'.format(t, cndf)
+                name='extra-relu-{}-{}'.format(t, last_layer_output_depth)
             ))
 
-        while csize > 4:
-            old_cndf = cndf
-            cndf = cndf * 2
-            csize = csize / 2
+        while last_layer_output_height > 4:
+            layer_output_depth = last_layer_output_depth * 2
             encoder.add(tf.keras.layers.Conv2D(
-                filters=cndf,
+                filters=layer_output_depth,
                 kernel_size=(4,4),
                 strides=(2,2),
                 padding='same',
                 kernel_initializer=kernel_initializer,
                 use_bias=False,
-                name='pyramid-conv-{}-{}'.format(old_cndf, cndf)
+                name='pyramid-conv-{}-{}'.format(last_layer_output_depth, layer_output_depth)
             ))
+            last_layer_output_height = last_layer_output_height / 2
+            last_layer_output_depth = layer_output_depth
             encoder.add(tf.keras.layers.BatchNormalization(
                 axis=-1,
                 beta_initializer=beta_initializer,
                 gamma_initializer=gamma_initializer,
-                name='pyramid-batchnorm-{}'.format(cndf)
+                name='pyramid-batchnorm-{}'.format(layer_output_depth)
             ))
             encoder.add(tf.keras.layers.LeakyReLU(
                 alpha=0.2,
-                name='pyramid-relu-{}'.format(cndf)
+                name='pyramid-relu-{}'.format(layer_output_depth)
             ))
 
         encoder.add(tf.keras.layers.Conv2D(
@@ -120,7 +121,7 @@ class Encoder(BaseModel):
             padding='valid',
             kernel_initializer=kernel_initializer,
             use_bias=False,
-            name='final-conv-{}-{}'.format(cndf, latent_size)
+            name='final-conv-{}-{}'.format(last_layer_output_depth, latent_size)
         ))
         if full_dcgan_encoder:
             encoder.add(tf.keras.layers.BatchNormalization(
