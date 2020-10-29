@@ -158,89 +158,87 @@ class Decoder(BaseModel):
         if log(input_shape[0], 2) != int(log(input_shape[0], 2)):
             raise ValueError("image width and height must be a power of 2")
 
-        cngf, tisize = n_filters // 2, 4
-        while tisize != input_shape[0]:
-            cngf = cngf * 2
-            tisize = tisize * 2
-
         decoder = tf.keras.Sequential(name=kwargs.get('name') or 'decoder')
 
         decoder.add(tf.keras.Input(shape=(1,1,latent_size), name='input_1'))
 
+        layer_output_depth = int(n_filters * (2 ** (log(input_shape[0], 2) - 3)))
+        layer_output_height = 4
+
         decoder.add(tf.keras.layers.Conv2DTranspose(
-            filters=cngf,
+            filters=layer_output_depth,
             kernel_size=(4,4),
             strides=(1,1),
             padding='valid',
             kernel_initializer=kernel_initializer,
             use_bias=False,
-            name='initial-convt-{}-{}'.format(latent_size, cngf)
+            name='initial-convt-{}-{}'.format(latent_size, layer_output_depth)
         ))
         decoder.add(tf.keras.layers.BatchNormalization(
             axis=-1,
             beta_initializer=beta_initializer,
             gamma_initializer=gamma_initializer,
-            name='initial-batchnorm-{}'.format(cngf)
+            name='initial-batchnorm-{}'.format(layer_output_depth)
         ))
         decoder.add(tf.keras.layers.ReLU(
-            name='initial-relu-{}'.format(cngf)
+            name='initial-relu-{}'.format(layer_output_depth)
         ))
 
-        csize, _ = 4, cngf
-        while csize < input_shape[0] // 2:
+        while layer_output_height < input_shape[0] // 2:
+            last_layer_output_depth = layer_output_depth
+            layer_output_depth = layer_output_depth // 2
+            layer_output_height = layer_output_height * 2
             decoder.add(tf.keras.layers.Conv2DTranspose(
-                filters=cngf // 2,
+                filters=layer_output_depth,
                 kernel_size=(4,4),
                 strides=(2,2),
                 padding='same',
                 kernel_initializer=kernel_initializer,
                 use_bias=False,
-                name='pyramid-convt-{}-{}'.format(cngf, cngf // 2)
+                name='pyramid-convt-{}-{}'.format(last_layer_output_depth, layer_output_depth)
             ))
             decoder.add(tf.keras.layers.BatchNormalization(
                 axis=-1,
                 beta_initializer=beta_initializer,
                 gamma_initializer=gamma_initializer,
-                name='pyramid-batchnorm-{}'.format(cngf // 2)
+                name='pyramid-batchnorm-{}'.format(layer_output_depth)
             ))
             decoder.add(tf.keras.layers.ReLU(
-                name='pyramid-relu-{}'.format(cngf // 2)
+                name='pyramid-relu-{}'.format(layer_output_depth)
             ))
-            cngf = cngf // 2
-            csize = csize * 2
 
         for t in range(n_extra_layers):
             decoder.add(tf.keras.layers.Conv2D(
-                filters=cngf,
+                filters=layer_output_depth,
                 kernel_size=(3,3),
                 strides=(1,1),
                 padding='same',
                 kernel_initializer=kernel_initializer,
                 use_bias=False,
-                name='extra-conv-{}-{}'.format(t, cngf)
+                name='extra-conv-{}-{}'.format(t, layer_output_depth)
             ))
             decoder.add(tf.keras.layers.BatchNormalization(
                 axis=-1,
                 beta_initializer=beta_initializer,
                 gamma_initializer=gamma_initializer,
-                name='extra-batchnorm-{}-{}'.format(t, cngf)
+                name='extra-batchnorm-{}-{}'.format(t, layer_output_depth)
             ))
             decoder.add(tf.keras.layers.ReLU(
-                name='extra-relu-{}-{}'.format(t, cngf)
+                name='extra-relu-{}-{}'.format(t, layer_output_depth)
             ))
 
         decoder.add(tf.keras.layers.Conv2DTranspose(
-            filters=input_shape[2],
+            filters=input_shape[-1],
             kernel_size=(4,4),
             strides=(2,2),
             padding='same',
             kernel_initializer=kernel_initializer,
             use_bias=False,
-            name='final-convt-{}-{}'.format(cngf, input_shape[2])
+            name='final-convt-{}-{}'.format(layer_output_depth, input_shape[-1])
         ))
         decoder.add(tf.keras.layers.Activation(
             activation='tanh',
-            name='final-tanh-{}'.format(input_shape[2])
+            name='final-tanh-{}'.format(input_shape[-1])
         ))
 
         self.model = decoder
