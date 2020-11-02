@@ -135,6 +135,11 @@ class GANomaly(tf.keras.Model):
         self.net_gen = Generator(input_shape, latent_size, n_filters, n_extra_layers)
         self.net_dis = Discriminator(input_shape, latent_size, n_filters, n_extra_layers)
 
+    def summary(self, **kwargs):
+        super().summary(**kwargs)
+        self.net_gen.summary(**kwargs)
+        self.net_dis.summary(**kwargs)
+
     def compile(self,
         loss: dict=dict(),
         loss_weights: dict=dict(),
