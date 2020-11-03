@@ -11,9 +11,9 @@ critical = logger.critical
 import tensorflow as tf
 import numpy as np
 
-
 class ADModelEvaluator(tf.keras.callbacks.Callback):
-    def __init__(self, test_count, model_dir=None, early_stopping=None):
+    def __init__(self, test_count, model_dir=None,
+        early_stopping_patience=None):
         super().__init__()
 
         self.model_dir = model_dir
@@ -40,11 +40,9 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
         self.best_epoch = 0
         self.best_weights = None
 
-        self.early_stopping = early_stopping
+        self.early_stopping_patience = early_stopping_patience
 
-    def on_epoch_end(self, epoch, logs=None):
-        # Save epoch result history
-        self.test_results.append(self.test_result)
+    def _handle_best_epoch(self, epoch):
         # Keep track of best metric and save best model
         if self.test_result >= self.best_result:
             self.best_epoch = epoch
@@ -54,43 +52,64 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
             self.best_weights = self.model.get_weights()
             if self.model_dir:
                 self.model.save_weights(path=self.model_dir)
-        # Print determined values
-        info("Curr Epoch {:02d}: AUC(ROC): {:.5f}, ptp_loss: {:.5f}, min_loss: {:.5f}".format(
-            epoch+1,
-            self.test_result,
-            self.test_ptp_loss,
-            self.test_min_loss
-        ))
+            self._log_best_epoch()
+
+    def _handle_early_stopping(self, epoch):
+        if (
+            self.early_stopping_patience and
+            self.early_stopping_patience > 0 and
+            (epoch - self.best_epoch) >= self.early_stopping_patience
+        ):
+            self.stopped_epoch = epoch
+            self.model.stop_training = True
+
+    def _log_best_epoch(self):
         info("Best Epoch {:02d}: AUC(ROC): {:.5f}, ptp_loss: {:.5f}, min_loss: {:.5f}".format(
             self.best_epoch+1,
             self.best_result,
             self.best_ptp_loss,
             self.best_min_loss
         ))
-        #debug("TP: {}\nTN: {}\nFP: {}\nFN: {}\nTH: {}".format(
-        #    self.metric.true_positives,
-        #    self.metric.true_negatives,
-        #    self.metric.false_positives,
-        #    self.metric.false_negatives,
-        #    self.metric.thresholds
-        #))
-        if (
-            self.early_stopping and
-            self.early_stopping > 0 and
-            (epoch - self.best_epoch) >= self.early_stopping
-        ):
-            self.stopped_epoch = epoch
-            self.model.stop_training = True
+
+    def _log_current_epoch(self, epoch):
+        info("Curr Epoch {:02d}: AUC(ROC): {:.5f}, ptp_loss: {:.5f}, min_loss: {:.5f}".format(
+            epoch+1,
+            self.test_result,
+            self.test_ptp_loss,
+            self.test_min_loss
+        ))
+
+        debug("TP: {}\nTN: {}\nFP: {}\nFN: {}\nTH: {}".format(
+            self.metric.true_positives,
+            self.metric.true_negatives,
+            self.metric.false_positives,
+            self.metric.false_negatives,
+            self.metric.thresholds
+        ))
+
+    def on_epoch_end(self, epoch, logs=None):
+        # Log determined values
+        self._log_current_epoch(epoch)
+
+        # Save epoch result history
+        self.test_results.append(self.test_result)
+
+        # Handle epoch based callback features
+        self._handle_best_epoch(epoch)
+        self._handle_early_stopping(epoch)
 
     def on_train_begin(self, logs=None):
         self.stopped_epoch = 0
+        self._cooldown = 0
+        self._model_optimizers = None
 
     def on_train_end(self, logs=None):
+        self._log_best_epoch()
         if self.stopped_epoch > 0:
             info("Epoch {:02d}: early stopping after {} epoch{} of no improvement".format(
                 self.stopped_epoch + 1,
-                self.early_stopping,
-                's' if self.early_stopping > 1 else ''
+                self.early_stopping_patience,
+                's' if self.early_stopping_patience > 1 else ''
             ))
 
     def on_test_begin(self, logs=None):
