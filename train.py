@@ -234,7 +234,7 @@ def main(args):
         epochs=args.epochs,
         steps_per_epoch=args.train_steps,
         validation_steps=args.eval_steps,
-        verbose=0
+        verbose=2
     )
 
     # remove the useless per image losses and labels and add test results
@@ -274,7 +274,7 @@ def parse_args():
             'error': logging.ERROR,
             'critical': logging.CRITICAL
         }.get(v, logging.INFO)
-    
+
     def str2posint(v):
         v = int(v)
         return v if v > 0 else None
