@@ -12,12 +12,38 @@ import tensorflow as tf
 import numpy as np
 
 class ADModelEvaluator(tf.keras.callbacks.Callback):
-    def __init__(self, test_count, model_dir=None,
-        early_stopping_patience=None,
-        reduce_lr_cooldown=10,
-        reduce_lr_factor=0.1,
-        reduce_lr_min_lr=1e-6,
-        reduce_lr_patience=None):
+    """ADModelEvaluator is a Keras evaluation callback for detecting anomalies with autoencoders.
+    The evaluation is performed with binary labels against the reconstruction error,
+    for example with MSE, of the reconstructed data using the AUROC metric.
+
+    This callback also implements some functions from the callbacks "EarlyStopping"
+    and "ReduceLROnPlateau", because in this callback the evaluated metric is calculated
+    and therefore not available for other callbacks.
+
+    This callback requires a specially designed test_step(data) function because
+    the labels must be returned from there to make them available within this callback.
+
+    A minimal example for the test_step(data) function is:
+
+    def test_step(self, data):
+        _, y, _ = tf.keras.utils.unpack_x_y_sample_weight(data)
+        return { *super().test_step(data), 'labels': y }
+
+    Args:
+        test_count (int): The numer of test samples. Needed for allocation of the used numpy arrays.
+        model_dir (str, optional): Output directory for storing the best model weights. Defaults to None.
+        early_stopping_patience (int, optional): Number of epochs without improvment to stop training. Defaults to None.
+        reduce_lr_cooldown (int, optional): Number of epochs to wait before resuming normal operation after lr has been reduced. Defaults to reduce_lr_patience if None.
+        reduce_lr_factor (float, optional): Factor by which the learning rate will be reduced. new_lr = lr * factor. Defaults to 0.1.
+        reduce_lr_min_lr (float, optional): Lower bound on the learning rate. Defaults to 1e-6.
+        reduce_lr_patience (int, optional): Number of epochs with no improvement after which learning rate will be reduced. Defaults to None.
+    """
+    def __init__(self, test_count: int, model_dir: str=None,
+        early_stopping_patience: int=None,
+        reduce_lr_cooldown: int=None,
+        reduce_lr_factor: float=0.1,
+        reduce_lr_min_lr: float=1e-6,
+        reduce_lr_patience: int=None):
         super().__init__()
 
         self.model_dir = model_dir
@@ -49,7 +75,7 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
         self.reduce_lr_patience = reduce_lr_patience
         self.reduce_lr_factor = reduce_lr_factor
         self.reduce_lr_min_lr = reduce_lr_min_lr
-        self.reduce_lr_cooldown = reduce_lr_cooldown
+        self.reduce_lr_cooldown = reduce_lr_cooldown or reduce_lr_patience
 
     def _handle_best_epoch(self, epoch):
         # Keep track of best metric and save best model
