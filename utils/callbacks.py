@@ -13,7 +13,11 @@ import numpy as np
 
 class ADModelEvaluator(tf.keras.callbacks.Callback):
     def __init__(self, test_count, model_dir=None,
-        early_stopping_patience=None):
+        early_stopping_patience=None,
+        reduce_lr_cooldown=10,
+        reduce_lr_factor=0.1,
+        reduce_lr_min_lr=1e-6,
+        reduce_lr_patience=None):
         super().__init__()
 
         self.model_dir = model_dir
@@ -42,6 +46,11 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
 
         self.early_stopping_patience = early_stopping_patience
 
+        self.reduce_lr_patience = reduce_lr_patience
+        self.reduce_lr_factor = reduce_lr_factor
+        self.reduce_lr_min_lr = reduce_lr_min_lr
+        self.reduce_lr_cooldown = reduce_lr_cooldown
+
     def _handle_best_epoch(self, epoch):
         # Keep track of best metric and save best model
         if self.test_result >= self.best_result:
@@ -62,6 +71,32 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
         ):
             self.stopped_epoch = epoch
             self.model.stop_training = True
+
+    def _handle_reduce_lr(self, epoch):
+        # TODO: Keep track of test_result based on last time lr reduced???
+        if (
+            self.reduce_lr_patience and
+            self.reduce_lr_patience > 0 and
+            (epoch - self.best_epoch) >= self.reduce_lr_patience and
+            self._cooldown <= 0
+        ):
+            if not self._model_optimizers:
+                # collect all variables of type Optimizer from model object
+                self._model_optimizers = {
+                    k: v for k, v in self.model.__dict__.items()
+                            if isinstance(v, tf.keras.optimizers.Optimizer)}
+            for var_name, optimizer in self._model_optimizers.items():
+                old_lr = float(tf.keras.backend.get_value(optimizer.lr))
+                if old_lr <= self.reduce_lr_min_lr:
+                    continue
+                new_lr = old_lr * self.reduce_lr_factor
+                if new_lr < self.reduce_lr_min_lr:
+                    new_lr = self.reduce_lr_min_lr
+                info("Setting {}.lr to {}".format(var_name, new_lr))
+                tf.keras.backend.set_value(optimizer.lr, new_lr)
+            self._cooldown = self.reduce_lr_cooldown
+        else:
+            self._cooldown -= 1
 
     def _log_best_epoch(self):
         info("Best Epoch {:02d}: AUC(ROC): {:.5f}, ptp_loss: {:.5f}, min_loss: {:.5f}".format(
@@ -97,6 +132,7 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
         # Handle epoch based callback features
         self._handle_best_epoch(epoch)
         self._handle_early_stopping(epoch)
+        self._handle_reduce_lr(epoch)
 
     def on_train_begin(self, logs=None):
         self.stopped_epoch = 0
