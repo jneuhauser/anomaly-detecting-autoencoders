@@ -56,8 +56,8 @@ class CVAE(tf.keras.Model):
 
         # build the variational part with the functional api
         variational_input = tf.keras.Input(shape=intermediate_size, name='input_variational')
-        z_mean = tf.keras.layers.Dense(latent_size, activation='relu', name='z_mean')(variational_input)
-        z_log_var = tf.keras.layers.Dense(latent_size, activation='relu', name='z_log_var')(variational_input)
+        z_mean = tf.keras.layers.Dense(latent_size, name='z_mean')(variational_input)
+        z_log_var = tf.keras.layers.Dense(latent_size, name='z_log_var')(variational_input)
         # sample z from z_mean and z_log_var
         z = Sampling(name='sampling_z')([z_mean, z_log_var])
         self.net_var = tf.keras.Model(variational_input, [z_mean, z_log_var, z], name='variational')
