@@ -37,6 +37,7 @@ default_args = {
     'batch_size': 64,
     'learning_rate': 0.0002,
     'early_stopping_patience': 100,
+    'reduce_lr_patience': 50,
 
     # tf.data piepline params
     'dataset_name': 'mnist',
@@ -224,7 +225,8 @@ def main(args):
     adme = ADModelEvaluator(
         test_count=test_count if args.eval_steps is None else args.eval_steps * args.batch_size,
         model_dir=args.sm_model_dir or args.model_dir,
-        early_stopping_patience=args.early_stopping_patience
+        early_stopping_patience=args.early_stopping_patience,
+        reduce_lr_patience=args.reduce_lr_patience
     )
 
     results = model.fit(
@@ -289,6 +291,8 @@ def parse_args():
                         default=default_args['learning_rate'])
     parser.add_argument('--early_stopping_patience', '--early_stopping', type=int,
                         default=default_args['early_stopping_patience'])
+    parser.add_argument('--reduce_lr_patience', type=int,
+                        default=default_args['reduce_lr_patience'])
 
     # tf.data piepline options
     parser.add_argument('--dataset_name', type=str,
