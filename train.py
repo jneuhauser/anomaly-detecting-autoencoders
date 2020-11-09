@@ -37,7 +37,7 @@ default_args = {
     'batch_size': 64,
     'learning_rate': 0.0002,
     'early_stopping_patience': 100,
-    'reduce_lr_patience': 50,
+    'reduce_lr_patience': 0,
 
     # tf.data piepline params
     'dataset_name': 'mnist',
@@ -56,7 +56,7 @@ default_args = {
     # model params
     'model_name': 'ganomaly',
     'latent_size': 100,
-    'intermediate_size': 100,   # only valid for cvae
+    'intermediate_size': 0,   # only valid for cvae
     'n_filters': 64,
     'n_extra_layers': 0,
     'w_adv': 1,                 # only valid for GANomaly
