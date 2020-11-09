@@ -33,7 +33,7 @@ class Sampling(tf.keras.layers.Layer):
 
 
 class CVAE(tf.keras.Model):
-    def __init__(self, input_shape, intermediate_size=100, latent_size=100, n_filters=64, n_extra_layers=0, **kwargs):
+    def __init__(self, input_shape, latent_size=100, n_filters=64, n_extra_layers=0, intermediate_size=0, **kwargs):
         kwargs['name'] = type(self).__name__
         super().__init__(**kwargs)
 
@@ -47,15 +47,20 @@ class CVAE(tf.keras.Model):
                 # drop the latent convolution layer (last layer) from the encoder
                 *encoder.layers[:-1],
                 # preprocess before variational sampling
-                tf.keras.layers.Flatten(name='encoder_flatten'),
-                tf.keras.layers.Dense(intermediate_size, activation='relu', name='encoder_intermediate')
+                tf.keras.layers.Flatten(name='encoder_flatten')
             ],
             name='encoder'
         )
-        decoder_input_size = self.net_enc.layers[-3].output_shape[1:]
+        variational_input_size = (np.prod(self.net_enc.layers[-2].output_shape[1:]),)
+        decoder_input_size = self.net_enc.layers[-2].output_shape[1:]
+        # add an optional fully connected intermediate layer
+        if intermediate_size and intermediate_size > 0:
+            variational_input_size = (intermediate_size,)
+            self.net_enc.add(tf.keras.layers.Dense(
+                intermediate_size, activation='relu', name='encoder_intermediate'))
 
         # build the variational part with the functional api
-        variational_input = tf.keras.Input(shape=intermediate_size, name='input_variational')
+        variational_input = tf.keras.Input(shape=variational_input_size, name='input_variational')
         z_mean = tf.keras.layers.Dense(latent_size, name='z_mean')(variational_input)
         z_log_var = tf.keras.layers.Dense(latent_size, name='z_log_var')(variational_input)
         # sample z from z_mean and z_log_var
