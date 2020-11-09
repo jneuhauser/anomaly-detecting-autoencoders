@@ -150,9 +150,9 @@ class CVAE(tf.keras.Model):
 
         return {
             **{
-                'total_loss': total_loss,
+                'loss_total': total_loss,
                 #'rec_loss': reconstruction_loss, # is included in metrics dict below
-                'kl_loss': kl_loss
+                'loss_kl': kl_loss
             },
             **{m.name: m.result() for m in self.metrics}
         }
