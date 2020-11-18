@@ -66,7 +66,7 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
 
         self.best_ptp_loss = 0.
         self.best_min_loss = 0.
-        self.best_result = 0.5 # 0.5 AUC is random and the worst
+        self.best_result = 0.
         self.best_epoch = 0
         self.best_weights = None
 
@@ -79,7 +79,7 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
 
     def _handle_best_epoch(self, epoch):
         # Keep track of best metric and save best model
-        if abs(self.test_result - 0.5) >= abs(self.best_result - 0.5):
+        if self.test_result >= self.best_result:
             self.best_epoch = epoch
             self.best_result = self.test_result
             self.best_ptp_loss = self.test_ptp_loss
@@ -125,12 +125,11 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
             self._cooldown -= 1
 
     def _log_best_epoch(self):
-        info("Best Epoch {:02d}: AUC(ROC): {:.5f}, ptp_loss: {:.5f}, min_loss: {:.5f}{}".format(
+        info("Best Epoch {:02d}: AUC(ROC): {:.5f}, ptp_loss: {:.5f}, min_loss: {:.5f}".format(
             self.best_epoch+1,
             self.best_result,
             self.best_ptp_loss,
-            self.best_min_loss,
-            '' if self.best_result > 0.5 else ', Note: labels inverted'
+            self.best_min_loss
         ))
 
     def _log_current_epoch(self, epoch):
@@ -193,7 +192,7 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
         self.test_losses /= self.test_ptp_loss
         # Calculate metric AUROC
         self.metric.update_state(self.test_labels, self.test_losses)
-        self.test_result = float(self.metric.result().numpy())
+        self.test_result = self.metric.result().numpy()
 
     def on_test_batch_end(self, batch, logs=None):
         # Gather all per batch losses and labels
