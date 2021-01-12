@@ -79,7 +79,7 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
 
     def _handle_best_epoch(self, epoch):
         # Keep track of best metric and save best model
-        if self.test_result > self.best_result:
+        if (self.test_result - 1e-7) > self.best_result:
             self.best_epoch = epoch
             self.best_result = self.test_result
             self.best_ptp_loss = self.test_ptp_loss
