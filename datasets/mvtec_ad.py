@@ -1,6 +1,7 @@
 import sys
 assert sys.version_info >= (3, 3), "Python 3.3 or greater required"
 import os
+import time
 import tensorflow as tf
 
 file_url_base = "ftp://guest:GU.205dldo@ftp.softronics.ch/mvtec_anomaly_detection"
@@ -68,7 +69,7 @@ files = {
 }
 
 
-def _get_extracted_ds_root(category):
+def _get_extracted_ds_root(category, retry_count=10, retry_delay=60):
     try:
         file = files[category]
     except KeyError:
@@ -79,8 +80,19 @@ def _get_extracted_ds_root(category):
     def get_cache_dir():
         return os.getenv('KERAS_HOME') or os.path.join(os.path.expanduser('~'), '.keras')
 
+    def try_get_file(retry_count, retry_delay, **kwargs):
+        while retry_count > 1:
+            try:
+                return tf.keras.utils.get_file(**kwargs)
+            except ConnectionError:
+                retry_count -= 1
+                time.sleep(retry_delay)
+        # Don't catch exception on last try to throw the right exception trace
+        return tf.keras.utils.get_file(**kwargs)
+
     try:
-        path = tf.keras.utils.get_file(
+        path = try_get_file(
+            retry_count, retry_delay,
             fname = file["fname"],
             origin = os.path.join(file_url_base, file["fname"]),
             file_hash = file["sha256"],
