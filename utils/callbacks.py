@@ -193,8 +193,13 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
         # Clip values to [0, 1] to work around float inaccuracy (inplace)
         np.clip(self.test_losses, 0, 1, out=self.test_losses)
         # Calculate metric AUROC
-        self.metric.update_state(self.test_labels, self.test_losses)
-        self.test_result = self.metric.result().numpy()
+        try:
+            self.metric.update_state(self.test_labels, self.test_losses)
+            self.test_result = self.metric.result().numpy()
+        except Exception as e:
+            print("test_labels:", self.test_labels)
+            print("test_losses:", self.test_losses)
+            raise e
 
     def on_test_batch_end(self, batch, logs=None):
         # Gather all per batch losses and labels
