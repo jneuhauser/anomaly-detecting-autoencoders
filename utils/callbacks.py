@@ -190,6 +190,8 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
         self.test_ptp_loss = np.max(self.test_losses) - self.test_min_loss
         self.test_losses -= self.test_min_loss
         self.test_losses /= self.test_ptp_loss
+        # Clip values to [0, 1] to work around float inaccuracy (inplace)
+        np.clip(self.test_losses, 0, 1, out=self.test_losses)
         # Calculate metric AUROC
         self.metric.update_state(self.test_labels, self.test_losses)
         self.test_result = self.metric.result().numpy()
