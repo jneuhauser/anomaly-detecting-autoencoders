@@ -154,6 +154,7 @@ def get_prepared_datasets(args):
         try:
             (train_images, train_labels), (test_images, test_labels) = create_anomaly_dataset(
                 dataset=get_dataset(args.dataset_name), abnormal_class=args.abnormal_class)
+            args.dataset_name += str(args.abnormal_class)
             train_ds = tf.data.Dataset.from_tensor_slices(
                 (train_images, train_labels))
             test_ds = tf.data.Dataset.from_tensor_slices(
