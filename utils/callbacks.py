@@ -62,6 +62,9 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
         self.test_ptp_loss = 0.
         self.test_min_loss = 0.
         self.test_result = 0.
+
+        self.test_ptp_losses = []
+        self.test_min_losses = []
         self.test_results = []
 
         self.best_ptp_loss = 0.
@@ -149,6 +152,8 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
         self._log_current_epoch(epoch)
 
         # Save epoch result history
+        self.test_ptp_losses.append(self.test_ptp_loss)
+        self.test_min_losses.append(self.test_min_loss)
         self.test_results.append(self.test_result)
 
         # Handle epoch based callback features
