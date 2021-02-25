@@ -49,19 +49,19 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
         self.model_dir = model_dir
 
         # AUROC as fixed metric
-        self.metric = tf.keras.metrics.AUC(
+        self._metric = tf.keras.metrics.AUC(
             curve='ROC',
             summation_method='interpolation'
         )
 
-        self.test_labels = np.zeros((test_count, 1), dtype=np.float32)
-        self.test_losses = np.zeros((test_count, 1), dtype=np.float32)
-        self.test_results_idx_start = 0
-        self.test_results_idx_end = 0
+        self._test_labels = np.zeros((test_count, 1), dtype=np.float32)
+        self._test_losses = np.zeros((test_count, 1), dtype=np.float32)
+        self._test_results_idx_start = 0
+        self._test_results_idx_end = 0
 
-        self.test_ptp_loss = 0.
-        self.test_min_loss = 0.
-        self.test_result = 0.
+        self._test_ptp_loss = 0.
+        self._test_min_loss = 0.
+        self._test_result = 0.
 
         self.test_ptp_losses = []
         self.test_min_losses = []
@@ -82,11 +82,11 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
 
     def _handle_best_epoch(self, epoch):
         # Keep track of best metric and save best model
-        if (self.test_result - 1e-7) > self.best_result:
+        if (self._test_result - 1e-7) > self.best_result:
             self.best_epoch = epoch
-            self.best_result = self.test_result
-            self.best_ptp_loss = self.test_ptp_loss
-            self.best_min_loss = self.test_min_loss
+            self.best_result = self._test_result
+            self.best_ptp_loss = self._test_ptp_loss
+            self.best_min_loss = self._test_min_loss
             self.best_weights = self.model.get_weights()
             if self.model_dir:
                 self.model.save_weights(path=self.model_dir)
@@ -134,17 +134,17 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
     def _log_current_epoch(self, epoch):
         info("Curr Epoch {:02d}: AUC(ROC): {:.5f}, ptp_loss: {:.5f}, min_loss: {:.5f}".format(
             epoch+1,
-            self.test_result,
-            self.test_ptp_loss,
-            self.test_min_loss
+            self._test_result,
+            self._test_ptp_loss,
+            self._test_min_loss
         ))
 
         debug("TP: {}\nTN: {}\nFP: {}\nFN: {}\nTH: {}".format(
-            self.metric.true_positives,
-            self.metric.true_negatives,
-            self.metric.false_positives,
-            self.metric.false_negatives,
-            self.metric.thresholds
+            self._metric.true_positives,
+            self._metric.true_negatives,
+            self._metric.false_positives,
+            self._metric.false_negatives,
+            self._metric.thresholds
         ))
 
     def on_epoch_end(self, epoch, logs=None):
@@ -152,9 +152,9 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
         self._log_current_epoch(epoch)
 
         # Save epoch result history
-        self.test_ptp_losses.append(self.test_ptp_loss)
-        self.test_min_losses.append(self.test_min_loss)
-        self.test_results.append(self.test_result)
+        self.test_ptp_losses.append(self._test_ptp_loss)
+        self.test_min_losses.append(self._test_min_loss)
+        self.test_results.append(self._test_result)
 
         # Handle epoch based callback features
         self._handle_best_epoch(epoch)
@@ -181,29 +181,29 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
 
     def on_test_begin(self, logs=None):
         # Prepare for new evaluation
-        self.metric.reset_states()
-        self.test_results_idx_start = 0
-        self.test_results_idx_end = 0
+        self._metric.reset_states()
+        self._test_results_idx_start = 0
+        self._test_results_idx_end = 0
 
     def on_test_end(self, logs=None):
         # Raise error if not enoght results are collected
-        if self.test_results_idx_end != self.test_losses.shape[0]:
+        if self._test_results_idx_end != self._test_losses.shape[0]:
             raise ValueError("collected results count of {} doesn't match expected count of {}"
-                .format(self.test_results_idx_end, self.test_losses.shape[0]))
+                .format(self._test_results_idx_end, self._test_losses.shape[0]))
         # Scale losses between [0, 1]
-        self.test_min_loss = np.min(self.test_losses)
-        self.test_ptp_loss = np.max(self.test_losses) - self.test_min_loss
-        self.test_losses -= self.test_min_loss
-        self.test_losses /= self.test_ptp_loss
+        self._test_min_loss = np.min(self._test_losses)
+        self._test_ptp_loss = np.max(self._test_losses) - self._test_min_loss
+        self._test_losses -= self._test_min_loss
+        self._test_losses /= self._test_ptp_loss
         # Clip values to [0, 1] to work around float inaccuracy (inplace)
-        np.clip(self.test_losses, 0, 1, out=self.test_losses)
+        np.clip(self._test_losses, 0, 1, out=self._test_losses)
         # Calculate metric AUROC
         try:
-            self.metric.update_state(self.test_labels, self.test_losses)
-            self.test_result = self.metric.result().numpy()
+            self._metric.update_state(self._test_labels, self._test_losses)
+            self._test_result = self._metric.result().numpy()
         except Exception as e:
-            print("test_labels:", self.test_labels)
-            print("test_losses:", self.test_losses)
+            print("test_labels:", self._test_labels)
+            print("test_losses:", self._test_losses)
             raise e
 
     def on_test_batch_end(self, batch, logs=None):
@@ -211,7 +211,7 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
         labels = logs.get('labels')
         losses = logs.get('losses')
         batch_size = losses.shape[0]
-        self.test_results_idx_end += batch_size
-        self.test_labels[self.test_results_idx_start:self.test_results_idx_end] = labels
-        self.test_losses[self.test_results_idx_start:self.test_results_idx_end] = losses
-        self.test_results_idx_start += batch_size
+        self._test_results_idx_end += batch_size
+        self._test_labels[self._test_results_idx_start:self._test_results_idx_end] = labels
+        self._test_losses[self._test_results_idx_start:self._test_results_idx_end] = losses
+        self._test_results_idx_start += batch_size
