@@ -106,11 +106,7 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
             (epoch - self.best_epoch) >= self.reduce_lr_patience and
             self._cooldown <= 0
         ):
-            if not self._model_optimizers:
-                # collect all variables of type Optimizer from model object
-                self._model_optimizers = {
-                    k: v for k, v in self.model.__dict__.items()
-                            if isinstance(v, tf.keras.optimizers.Optimizer)}
+            # Reduce learning rate of all optimizers
             for var_name, optimizer in self._model_optimizers.items():
                 old_lr = float(tf.keras.backend.get_value(optimizer.lr))
                 if old_lr <= self.reduce_lr_min_lr:
@@ -163,7 +159,11 @@ class ADModelEvaluator(tf.keras.callbacks.Callback):
     def on_train_begin(self, logs=None):
         self.stopped_epoch = 0
         self._cooldown = 0
-        self._model_optimizers = None
+        # collect all variables of type Optimizer from model object
+        self._model_optimizers = {
+            k: v for k, v in self.model.__dict__.items()
+            if isinstance(v, tf.keras.optimizers.Optimizer)
+        }
 
     def on_train_end(self, logs=None):
         self._log_best_epoch()
